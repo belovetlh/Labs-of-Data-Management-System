@@ -171,6 +171,8 @@ VALIDATORS: dict[str, dict] = {
                 "updatedAt": {"bsonType": "date"},
                 "publishedAt": {"bsonType": ["date", "null"]},
                 "closedAt": {"bsonType": ["date", "null"]},
+                # 标记删除：未删除的问卷没有这个字段
+                "deletedAt": {"bsonType": "date"},
             },
         }
     },

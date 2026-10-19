@@ -40,3 +40,18 @@ def db():
 def client():
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture()
+def login_as(client):
+    """注册并登录一个账号，返回可直接用于请求的 Authorization 请求头。"""
+
+    def _login_as(username: str = "owner_01", display_name: str = "测试用户") -> dict:
+        password = "Passw0rd!"
+        client.post("/api/auth/register",
+                    json={"username": username, "password": password, "displayName": display_name})
+        token = client.post("/api/auth/login",
+                            json={"username": username, "password": password}).json()["accessToken"]
+        return {"Authorization": f"Bearer {token}"}
+
+    return _login_as
