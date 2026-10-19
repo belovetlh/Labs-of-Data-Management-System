@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 本地配置与数据
+.env
+.mongo-data/
+*.log
+
+# Word 打开时的临时锁文件
+~$*
