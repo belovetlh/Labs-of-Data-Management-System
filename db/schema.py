@@ -12,6 +12,7 @@ SCHEMA_VERSION = 1
 VALIDATION_LEVEL = "strict"
 VALIDATION_ACTION = "error"
 
+USERNAME_PATTERN = "^[A-Za-z0-9_]{3,32}$"
 QUESTION_ID_PATTERN = "^q_[0-9a-f]{8}$"
 OPTION_ID_PATTERN = "^o_[0-9a-f]{8}$"
 
@@ -129,11 +130,13 @@ VALIDATORS: dict[str, dict] = {
     "users": {
         "$jsonSchema": {
             "bsonType": "object",
-            "required": ["_id", "schemaVersion", "username", "passwordHash", "createdAt"],
+            "required": ["_id", "schemaVersion", "username", "displayName", "passwordHash", "createdAt"],
             "properties": {
                 "_id": {"bsonType": "objectId"},
                 "schemaVersion": _schema_version,
-                "username": {"bsonType": "string", "minLength": 3, "maxLength": 32},
+                # 账号：登录用，唯一；名字：展示用，可重复
+                "username": {"bsonType": "string", "pattern": USERNAME_PATTERN},
+                "displayName": {"bsonType": "string", "minLength": 1, "maxLength": 32},
                 "passwordHash": {"bsonType": "string", "minLength": 1},
                 "createdAt": {"bsonType": "date"},
             },

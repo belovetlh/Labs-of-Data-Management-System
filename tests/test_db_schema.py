@@ -16,6 +16,7 @@ def make_user(**overrides):
     doc = {
         "schemaVersion": SCHEMA_VERSION,
         "username": "alice",
+        "displayName": "爱丽丝",
         "passwordHash": "$2b$12$hash",
         "createdAt": NOW,
     }
@@ -121,6 +122,21 @@ def test_user_missing_created_at_rejected(db):
 
 def test_user_short_username_rejected(db):
     assert_rejected(db.users, make_user(username="ab"))
+
+
+def test_user_chinese_username_rejected(db):
+    assert_rejected(db.users, make_user(username="张三三"))
+
+
+def test_user_missing_display_name_rejected(db):
+    doc = make_user()
+    del doc["displayName"]
+    assert_rejected(db.users, doc)
+
+
+def test_same_display_name_allowed(db):
+    db.users.insert_one(make_user(username="zhangsan01", displayName="张三"))
+    db.users.insert_one(make_user(username="zhangsan02", displayName="张三"))
 
 
 def test_duplicate_username_rejected(db):

@@ -32,8 +32,9 @@ python -m venv .venv
 |---|---|---|
 | `MONGODB_URI` | MongoDB 连接串 | `mongodb://localhost:27017` |
 | `MONGODB_DB` | 数据库名 | `survey_system` |
-| `JWT_SECRET` | 登录令牌签名密钥 | `dev-secret-change-me` |
+| `JWT_SECRET` | 登录令牌签名密钥（正式使用务必修改，建议 32 位以上） | 仅供开发的默认值 |
 | `JWT_EXPIRE_MINUTES` | 令牌有效期（分钟） | `1440` |
+| `BCRYPT_ROUNDS` | 密码哈希强度 | `12` |
 
 ### 4. 初始化数据库
 
@@ -52,7 +53,7 @@ python -m venv .venv
 ```
 
 - 健康检查：<http://127.0.0.1:8000/api/health>
-- 自动生成的 API 文档：<http://127.0.0.1:8000/docs>
+- 自动生成的 API 文档：<http://127.0.0.1:8000/docs>。需要登录的接口：先调用 `/api/auth/login` 拿到 `accessToken`，点右上角 Authorize 填入，即可直接试用。
 
 ### 6. 运行测试
 

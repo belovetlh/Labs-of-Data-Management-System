@@ -2,6 +2,7 @@ import os
 
 # 测试使用独立的数据库，必须在导入 app 之前设置
 os.environ["MONGODB_DB"] = "survey_system_test"
+os.environ["BCRYPT_ROUNDS"] = "4"  # 测试里调低哈希强度，加快速度
 
 import pytest
 from fastapi.testclient import TestClient
