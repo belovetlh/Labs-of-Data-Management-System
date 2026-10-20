@@ -8,7 +8,7 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from pydantic_core import PydanticCustomError
 
-from db.schema import MAX_JUMP_RULES, MAX_OPTIONS, USERNAME_PATTERN
+from db.schema import MAX_JUMP_RULES, MAX_OPTIONS, MAX_QUESTIONS, USERNAME_PATTERN
 
 # 可打印 ASCII（英文字母、数字、英文符号），不含空格；一个字符一个字节，72 正好是 bcrypt 上限
 PASSWORD_PATTERN = r"^[\x21-\x7E]{8,72}$"
@@ -260,3 +260,36 @@ class JumpRulesRequest(StrictModel):
 
 class QuestionOrderRequest(StrictModel):
     question_ids: list[str] = Field(description="全部题目 id 的新顺序")
+
+
+# ---------- 填写 ----------
+
+class FillView(ApiModel):
+    title: str
+    description: str
+    slug: str
+    allow_anonymous: bool = Field(description="匿名问卷：答卷不记录填写者")
+    phase: str
+    can_submit: bool = Field(description="当前用户现在能否填写提交")
+    reason: str | None = Field(default=None, description="不能填写时的原因")
+    already_submitted: bool = Field(description="不允许多次填写且已经填过")
+    questions: list[dict] = Field(description="题目（不含跳转规则，下一题由 navigate 计算）")
+
+
+class AnswersRequest(StrictModel):
+    answers: Annotated[dict[str, Any], Field(max_length=MAX_QUESTIONS * 2)] = Field(
+        default_factory=dict,
+        description="{题目 id: 值}。没有某题 = 还没答到；值为 null / 空字符串 / 空数组 = 看过、不答",
+    )
+
+
+class NavigateResult(ApiModel):
+    path: list[str] = Field(description="目前的答题路径（题目 id，按顺序）")
+    next_question: str | None = Field(description="下一道要答的题；null 表示已走完")
+    errors: dict[str, str] = Field(description="已答题的错误：题目 id → 提示")
+    off_path: list[str] = Field(description="按前面的回答已不在路径上的题，前端应清掉它们的答案")
+    complete: bool = Field(description="是否可以提交")
+
+
+class SubmitResult(ApiModel):
+    submitted_at: datetime
