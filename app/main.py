@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.db import get_db
+from app.errors import register_error_handlers
 from app.routers import auth, fill, questions, stats, surveys
 from db.init_db import init_db
 
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="问卷系统", version="0.1.0", lifespan=lifespan)
+register_error_handlers(app)   # 请求格式错误的提示统一为中文
 app.include_router(auth.router)
 app.include_router(surveys.router)
 app.include_router(questions.router)

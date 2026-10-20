@@ -2,7 +2,7 @@
 
 技术栈：Python 3.13 + FastAPI + PyMongo（MongoDB 8.x）+ pytest；前端为后端托管的静态 HTML + 原生 JS。
 
-需求与决策基准见 [需求基准与任务拆解.md](需求基准与任务拆解.md)，AI 使用日志见 [docs/AI使用日志.md](docs/AI使用日志.md)。
+需求与决策基准见 [需求基准与任务拆解.md](需求基准与任务拆解.md)，设计与全部设计取舍见 [docs/设计草案.md](docs/设计草案.md)。AI 使用说明与 AI 使用日志（节选）见实验报告。
 
 ## 配置与运行
 
