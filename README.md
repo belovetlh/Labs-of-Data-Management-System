@@ -52,6 +52,7 @@ python -m venv .venv
 .venv/Scripts/python -m uvicorn app.main:app --reload
 ```
 
+- 网页入口：<http://127.0.0.1:8000/>（未登录会先进入登录 / 注册页）。问卷发布后，分享链接形如 `http://127.0.0.1:8000/survey/xxxxxxxx`
 - 健康检查：<http://127.0.0.1:8000/api/health>
 - 自动生成的 API 文档：<http://127.0.0.1:8000/docs>。需要登录的接口：先调用 `/api/auth/login` 拿到 `accessToken`，点右上角 Authorize 填入，即可直接试用。
 
@@ -62,3 +63,20 @@ python -m venv .venv
 ```bash
 .venv/Scripts/python -m pytest
 ```
+
+测试分为三类，一条命令全部运行：
+
+| 文件 | 类型 | 内容 |
+|---|---|---|
+| `test_db_schema.py` | 数据库 | 集合、校验器、索引是否按设计生效 |
+| `test_engine.py` | 单元测试 | 校验引擎、跳转引擎（纯函数） |
+| `test_auth.py` `test_surveys.py` `test_questions.py` `test_fill.py` `test_stats.py` `test_pages.py` | API 测试 | 各接口的正常与异常情况、并发 |
+| `test_browser.py` | 浏览器自动测试 | 用 Playwright 控制无界面 Chromium，走完"注册 → 建问卷 → 设跳转 → 发布 → 换账号填写 → 看统计"等流程，并把截图保存到 `docs/screenshots/` |
+
+浏览器测试需要先下载一次 Chromium（约 120 MB）：
+
+```bash
+.venv/Scripts/python -m playwright install chromium
+```
+
+没有安装 Playwright 或 Chromium 时，浏览器测试会自动跳过并给出提示，其余测试照常运行。只跑浏览器测试：`.venv/Scripts/python -m pytest tests/test_browser.py`。

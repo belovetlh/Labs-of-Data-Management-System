@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 问卷系统</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <main>
+    <div class="card" style="max-width: 420px; margin: 40px auto;">
+      <h1>问卷系统</h1>
+      <p class="muted" style="margin-bottom: 14px;">登录后可以创建问卷、填写他人分享的问卷</p>
+      <div class="tabs">
+        <button class="tab active" data-tab="login" data-testid="tab-login">登录</button>
+        <button class="tab" data-tab="register" data-testid="tab-register">注册</button>
+      </div>
+
+      <form id="login-form" class="stack">
+        <label>账号 <input type="text" id="login-username" autocomplete="username" required></label>
+        <label>密码 <input type="password" id="login-password" autocomplete="current-password" required></label>
+        <button class="btn btn-primary" type="submit" data-testid="login-submit">登录</button>
+      </form>
+
+      <form id="register-form" class="stack" hidden>
+        <label>账号 <input type="text" id="reg-username" autocomplete="username" required>
+          <span class="hint">3–32 位字母、数字或下划线，用于登录，不能重复</span></label>
+        <label>名字 <input type="text" id="reg-display" required>
+          <span class="hint">1–32 个字符，展示用，可以重复</span></label>
+        <label>密码 <input type="password" id="reg-password" autocomplete="new-password" required>
+          <span class="hint">8–72 位英文字母、数字或英文符号，不能有汉字和空格</span></label>
+        <button class="btn btn-primary" type="submit" data-testid="register-submit">注册并登录</button>
+      </form>
+
+      <p class="error" id="auth-error" data-testid="auth-error" role="alert"></p>
+    </div>
+  </main>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/login.js"></script>
+</body>
+</html>

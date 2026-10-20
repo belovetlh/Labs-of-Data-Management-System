@@ -1,10 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.db import get_db
 from app.routers import auth, fill, questions, stats, surveys
 from db.init_db import init_db
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -26,3 +31,19 @@ app.include_router(stats.router)
 def health():
     get_db().command("ping")
     return {"status": "ok"}
+
+
+# ---------- 页面 ----------
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return RedirectResponse("/static/surveys.html")
+
+
+@app.get("/survey/{slug}", include_in_schema=False)
+def fill_page(slug: str):
+    # 分享链接：返回填写页，slug 由页面里的 JS 从地址栏读取
+    return FileResponse(STATIC_DIR / "fill.html")

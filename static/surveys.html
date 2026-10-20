@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的问卷 · 问卷系统</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <main>
+    <div class="card">
+      <h2>新建问卷</h2>
+      <form id="create-form" class="stack">
+        <label>标题 <input type="text" id="new-title" required maxlength="200"></label>
+        <label>说明 <textarea id="new-description" maxlength="5000"></textarea></label>
+        <div>
+          <label class="inline"><input type="checkbox" id="new-anonymous"> 匿名问卷（不记录填写者）</label>
+          <label class="inline"><input type="checkbox" id="new-multiple" checked> 同一人可以填写多次</label>
+        </div>
+        <label>截止时间（可选） <input type="datetime-local" id="new-deadline"></label>
+        <div><button class="btn btn-primary" type="submit" data-testid="create-survey">创建并编辑题目</button></div>
+      </form>
+    </div>
+
+    <h2>我的问卷</h2>
+    <div id="survey-list" data-testid="survey-list"><p class="muted">加载中…</p></div>
+  </main>
+  <script src="/static/js/common.js"></script>
+  <script src="/static/js/surveys.js"></script>
+</body>
+</html>

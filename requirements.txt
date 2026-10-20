@@ -9,3 +9,4 @@ PyJWT==2.15.1
 # 测试
 pytest==9.1.1
 httpx2==2.13.1
+playwright==1.64.0  # 浏览器自动测试；另需执行一次 playwright install chromium
