@@ -1,3 +1,5 @@
+# NOTE: keep this file ASCII-only. pip reads it with the system encoding
+# (GBK on Chinese Windows), so non-ASCII comments break "pip install -r".
 fastapi==0.143.1
 uvicorn[standard]==0.54.0
 pymongo==4.19.0
@@ -6,7 +8,8 @@ pydantic-settings==2.16.0
 bcrypt==5.0.0
 PyJWT==2.15.1
 
-# 测试
+# tests
 pytest==9.1.1
 httpx2==2.13.1
-playwright==1.64.0  # 浏览器自动测试；另需执行一次 playwright install chromium
+# browser tests; also run once: python -m playwright install chromium
+playwright==1.64.0
