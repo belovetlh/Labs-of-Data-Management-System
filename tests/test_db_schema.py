@@ -27,6 +27,7 @@ def make_user(**overrides):
 def make_survey(**overrides):
     doc = {
         "schemaVersion": SCHEMA_VERSION,
+        "revision": 0,
         "ownerId": ObjectId(),
         "title": "大学生生活调查",
         "description": "",
@@ -149,6 +150,12 @@ def test_duplicate_username_rejected(db):
 
 def test_valid_survey_with_all_question_types_accepted(db):
     db.surveys.insert_one(make_survey())
+
+
+def test_survey_missing_revision_rejected(db):
+    doc = make_survey()
+    del doc["revision"]
+    assert_rejected(db.surveys, doc)
 
 
 def test_survey_bad_status_rejected(db):

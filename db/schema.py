@@ -18,6 +18,13 @@ OPTION_ID_PATTERN = "^o_[0-9a-f]{8}$"
 
 QUESTION_TYPES = ["single_choice", "multiple_choice", "text_input", "number_input"]
 
+CHOICE_TYPES = ["single_choice", "multiple_choice"]
+
+# 数量上限（防止单个问卷文档过大）
+MAX_QUESTIONS = 200
+MAX_OPTIONS = 50
+MAX_JUMP_RULES = 50
+
 # 各题型允许的跳转条件 op（文本题不支持跳转）
 JUMP_OPS = {
     "single_choice": ["eq", "in"],
@@ -146,12 +153,14 @@ VALIDATORS: dict[str, dict] = {
         "$jsonSchema": {
             "bsonType": "object",
             "required": [
-                "_id", "schemaVersion", "ownerId", "title", "description", "slug",
+                "_id", "schemaVersion", "revision", "ownerId", "title", "description", "slug",
                 "status", "settings", "questions", "createdAt", "updatedAt",
             ],
             "properties": {
                 "_id": {"bsonType": "objectId"},
                 "schemaVersion": _schema_version,
+                # 修改版本号：每次修改加 1，写回时用作乐观锁条件
+                "revision": {"bsonType": ["int", "long"], "minimum": 0},
                 "ownerId": {"bsonType": "objectId"},
                 "title": {"bsonType": "string", "minLength": 1, "maxLength": 200},
                 "description": {"bsonType": "string", "maxLength": 5000},

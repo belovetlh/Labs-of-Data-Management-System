@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import get_db
-from app.routers import auth, surveys
+from app.routers import auth, questions, surveys
 from db.init_db import init_db
 
 
@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="问卷系统", version="0.1.0", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(surveys.router)
+app.include_router(questions.router)
 
 
 @app.get("/api/health")

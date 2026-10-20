@@ -297,7 +297,10 @@ def test_concurrent_publish_only_one_succeeds(client, db, login_as):
 
 
 def test_concurrent_edit_and_publish_never_edits_published(client, db, login_as):
-    """修改草稿和发布同时进行：要么改成功后再发布，要么发布后修改被拒，不会改到已发布的问卷。"""
+    """修改草稿和发布同时进行，以先到者为准：
+    - 发布先完成 → 修改被拒，标题不变；
+    - 修改先完成 → 发布要么在修改之后成功，要么因为"刚被修改过"失败（问卷仍是草稿）；
+    任何情况下都不会出现"已发布的问卷被改了"。"""
     headers = login_as()
     owner_id = None
     for _ in range(10):
@@ -306,6 +309,7 @@ def test_concurrent_edit_and_publish_never_edits_published(client, db, login_as)
         owner_id = owner_id or db.users.find_one({"username": "owner_01"})["_id"]
         barrier = threading.Barrier(2)
         edit_result = {}
+        publish_result = {}
 
         def edit():
             barrier.wait()
@@ -317,7 +321,12 @@ def test_concurrent_edit_and_publish_never_edits_published(client, db, login_as)
 
         def pub():
             barrier.wait()
-            svc.publish(db, owner_id, sid)
+            try:
+                svc.publish(db, owner_id, sid)
+                publish_result["ok"] = True
+            except svc.SurveyConflict as e:
+                publish_result["ok"] = False
+                assert "刚被修改过" in str(e)
 
         threads = [threading.Thread(target=edit), threading.Thread(target=pub)]
         for t in threads:
@@ -325,9 +334,11 @@ def test_concurrent_edit_and_publish_never_edits_published(client, db, login_as)
         for t in threads:
             t.join()
         doc = db.surveys.find_one({"_id": ObjectId(sid)})
-        assert doc["status"] == "published"
         # 修改成功 ⇔ 标题被改；修改失败 ⇔ 标题保持原样
         assert (doc["title"] == "改后标题") == edit_result["ok"]
+        # 发布成功 ⇔ 已发布；两者不可能都失败
+        assert (doc["status"] == "published") == publish_result["ok"]
+        assert edit_result["ok"] or publish_result["ok"]
 
 
 # ---------- 删除 ----------

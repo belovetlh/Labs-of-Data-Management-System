@@ -2,13 +2,13 @@
 
 import re
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 from pydantic_core import PydanticCustomError
 
-from db.schema import USERNAME_PATTERN
+from db.schema import MAX_JUMP_RULES, MAX_OPTIONS, USERNAME_PATTERN
 
 # 可打印 ASCII（英文字母、数字、英文符号），不含空格；一个字符一个字节，72 正好是 bcrypt 上限
 PASSWORD_PATTERN = r"^[\x21-\x7E]{8,72}$"
@@ -154,3 +154,109 @@ class SurveyDetail(SurveySummary):
     questions: list[dict]
     updated_at: datetime
     closed_at: datetime | None = None
+
+
+# ---------- 题目 ----------
+
+class StrictModel(ApiModel):
+    """带了未定义的字段直接报错（比如文本题带了 options），不会悄悄忽略。"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
+
+
+def _check_question_title(v: str) -> str:
+    v = v.strip()
+    if not 1 <= len(v) <= 500:
+        raise PydanticCustomError("question_title_length", "题目须为 1–500 个字符")
+    return v
+
+
+def _check_option_label(v: str) -> str:
+    v = v.strip()
+    if not 1 <= len(v) <= 200:
+        raise PydanticCustomError("option_label_length", "选项文字须为 1–200 个字符")
+    return v
+
+
+QuestionTitle = Annotated[str, AfterValidator(_check_question_title)]
+OptionLabel = Annotated[str, AfterValidator(_check_option_label)]
+Number = Annotated[int | float, Field(allow_inf_nan=False)]
+
+
+class OptionIn(StrictModel):
+    id: str | None = Field(default=None, description="修改题目时，原有选项带上 id 以保持不变；新选项不带")
+    label: OptionLabel
+
+
+Options = Annotated[list[OptionIn], Field(min_length=2, max_length=MAX_OPTIONS)]
+
+
+class MultipleChoiceValidation(StrictModel):
+    min_select: int | None = Field(default=None, ge=0, description="至少选几个")
+    max_select: int | None = Field(default=None, ge=1, description="最多选几个；与 minSelect 相等即「必须选 N 个」")
+
+
+class TextValidation(StrictModel):
+    min_length: int | None = Field(default=None, ge=0, description="最少字数")
+    max_length: int | None = Field(default=None, ge=1, description="最多字数")
+
+
+class NumberValidation(StrictModel):
+    min: Number | None = Field(default=None, description="最小值")
+    max: Number | None = Field(default=None, description="最大值")
+    integer: bool = Field(default=False, description="是否必须为整数")
+
+
+class SingleChoiceIn(StrictModel):
+    type: Literal["single_choice"]
+    title: QuestionTitle
+    required: bool = False
+    options: Options
+
+
+class MultipleChoiceIn(StrictModel):
+    type: Literal["multiple_choice"]
+    title: QuestionTitle
+    required: bool = False
+    options: Options
+    validation: MultipleChoiceValidation = Field(default_factory=MultipleChoiceValidation)
+
+
+class TextInputIn(StrictModel):
+    type: Literal["text_input"]
+    title: QuestionTitle
+    required: bool = False
+    validation: TextValidation = Field(default_factory=TextValidation)
+
+
+class NumberInputIn(StrictModel):
+    type: Literal["number_input"]
+    title: QuestionTitle
+    required: bool = False
+    validation: NumberValidation = Field(default_factory=NumberValidation)
+
+
+# 按 type 字段区分题型
+QuestionIn = Annotated[
+    SingleChoiceIn | MultipleChoiceIn | TextInputIn | NumberInputIn,
+    Field(discriminator="type"),
+]
+
+
+class JumpCondition(StrictModel):
+    op: str = Field(description="条件，见设计 2.5 节")
+    value: Any = Field(description="选项 id、选项 id 数组、数字或 [下限, 上限]")
+
+
+class JumpRuleIn(StrictModel):
+    when: JumpCondition
+    goto: str = Field(description='目标题 id，或 "END" 表示结束问卷')
+
+
+class JumpRulesRequest(StrictModel):
+    rules: Annotated[list[JumpRuleIn], Field(max_length=MAX_JUMP_RULES)] = Field(
+        description="按顺序判断，第一条命中的生效；空数组表示清空")
+
+
+class QuestionOrderRequest(StrictModel):
+    question_ids: list[str] = Field(description="全部题目 id 的新顺序")

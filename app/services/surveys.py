@@ -15,6 +15,7 @@ from pymongo import ReturnDocument
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
+from app.engine.structure import check_survey
 from db.schema import SCHEMA_VERSION
 
 SLUG_ALPHABET = string.ascii_letters + string.digits
@@ -51,7 +52,7 @@ def phase_of(survey: dict, now: datetime | None = None) -> str:
     return "open"
 
 
-def _owned_filter(owner_id: ObjectId, survey_id: str) -> dict:
+def owned_filter(owner_id: ObjectId, survey_id: str) -> dict:
     try:
         oid = ObjectId(survey_id)
     except (InvalidId, TypeError):
@@ -70,6 +71,7 @@ def create_survey(db: Database, owner_id: ObjectId, title: str, description: str
     now = now_utc()
     doc = {
         "schemaVersion": SCHEMA_VERSION,
+        "revision": 0,
         "ownerId": owner_id,
         "title": title,
         "description": description,
@@ -126,7 +128,7 @@ def list_surveys(db: Database, owner_id: ObjectId) -> list[dict]:
 
 
 def get_survey(db: Database, owner_id: ObjectId, survey_id: str) -> dict:
-    survey = db.surveys.find_one(_owned_filter(owner_id, survey_id))
+    survey = db.surveys.find_one(owned_filter(owner_id, survey_id))
     if survey is None:
         raise SurveyNotFound
     survey["questionCount"] = len(survey["questions"])
@@ -137,10 +139,10 @@ def get_survey(db: Database, owner_id: ObjectId, survey_id: str) -> dict:
 # ---------- 条件更新 ----------
 
 def _conditional_update(db, owner_id, survey_id, condition: dict, update: dict, explain) -> dict:
-    """condition 满足才执行 update；否则由 explain(当前文档) 给出原因。"""
-    flt = _owned_filter(owner_id, survey_id)
+    """condition 满足才执行 update（并把 revision 加 1）；否则由 explain(当前文档) 给出原因。"""
+    flt = owned_filter(owner_id, survey_id)
     updated = db.surveys.find_one_and_update(
-        {**flt, **condition}, update, return_document=ReturnDocument.AFTER
+        {**flt, **condition}, {**update, "$inc": {"revision": 1}}, return_document=ReturnDocument.AFTER
     )
     if updated is not None:
         return updated
@@ -175,17 +177,29 @@ def update_draft(db: Database, owner_id: ObjectId, survey_id: str, changes: dict
 
 def publish(db: Database, owner_id: ObjectId, survey_id: str) -> dict:
     now = now_utc()
+    current = db.surveys.find_one(owned_filter(owner_id, survey_id))
+    if current is None:
+        raise SurveyNotFound
+    # 发布前对整份问卷做一次结构检查（题目定义、跳转规则）
+    if current["status"] == "draft":
+        errors = check_survey(current["questions"])
+        if errors:
+            raise SurveyConflict("问卷存在问题，不能发布：" + "；".join(errors))
 
     def explain(s):
         if s["status"] != "draft":
             return "只有草稿可以发布"
         if not s["questions"]:
             return "问卷至少要有 1 道题才能发布"
+        if s["revision"] != current["revision"]:
+            return "问卷刚被修改过，请刷新后重试"
         return "截止时间已过，请先修改截止时间再发布"
 
+    # revision 条件保证：发布的正是刚才检查过的那一版
     return _conditional_update(
         db, owner_id, survey_id,
-        {"status": "draft", "questions.0": {"$exists": True}, **_not_deadline_passed(now)},
+        {"status": "draft", "revision": current["revision"], "questions.0": {"$exists": True},
+         **_not_deadline_passed(now)},
         {"$set": {"status": "published", "publishedAt": now, "updatedAt": now}},
         explain,
     )
@@ -233,7 +247,7 @@ def delete(db: Database, owner_id: ObjectId, survey_id: str) -> None:
     """标记删除：任何状态都可以；之后列表、链接、统计、提交都看不到这份问卷。"""
     now = now_utc()
     result = db.surveys.update_one(
-        _owned_filter(owner_id, survey_id), {"$set": {"deletedAt": now, "updatedAt": now}}
+        owned_filter(owner_id, survey_id), {"$set": {"deletedAt": now, "updatedAt": now}}
     )
     if result.matched_count == 0:
         raise SurveyNotFound
