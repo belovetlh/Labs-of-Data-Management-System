@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db import get_db
-from app.routers import auth, fill, questions, surveys
+from app.routers import auth, fill, questions, stats, surveys
 from db.init_db import init_db
 
 
@@ -19,6 +19,7 @@ app.include_router(auth.router)
 app.include_router(surveys.router)
 app.include_router(questions.router)
 app.include_router(fill.router)
+app.include_router(stats.router)
 
 
 @app.get("/api/health")

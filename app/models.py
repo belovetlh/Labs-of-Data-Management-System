@@ -293,3 +293,41 @@ class NavigateResult(ApiModel):
 
 class SubmitResult(ApiModel):
     submitted_at: datetime
+
+
+# ---------- 统计 ----------
+
+class OptionStat(ApiModel):
+    id: str
+    label: str
+    count: int = Field(description="单选：选择人数；多选：被选次数")
+    percent: float = Field(description="占回答该题人数的百分比，保留 2 位小数；多选各项相加可超过 100")
+
+
+class Entry(ApiModel):
+    value: Any
+    submitted_at: datetime
+    respondent: str | None = Field(default=None, description="非匿名问卷为「名字（账号）」；匿名问卷没有")
+
+
+class QuestionStat(ApiModel):
+    id: str
+    type: str
+    title: str
+    required: bool
+    answered_count: int = Field(description="回答了这道题的答卷数（因跳转可能少于总提交数）")
+    options: list[OptionStat] | None = Field(default=None, description="单选 / 多选")
+    average: float | None = Field(default=None, description="数字题平均值，保留 2 位小数")
+    min: int | float | None = None
+    max: int | float | None = None
+    entries: list[Entry] | None = Field(default=None, description="填空题内容，按提交时间倒序")
+    entries_total: int | None = None
+    page: int | None = None
+    page_size: int | None = None
+
+
+class SurveyStats(ApiModel):
+    survey_id: str
+    title: str
+    total_responses: int = Field(description="问卷总提交数")
+    questions: list[QuestionStat] = Field(description="填空题只带最新 5 条内容，全部内容见单题统计")
