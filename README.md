@@ -1,8 +1,31 @@
 # 基于 MongoDB 的问卷系统
 
-技术栈：Python 3.13 + FastAPI + PyMongo（MongoDB 8.x）+ pytest；前端为后端托管的静态 HTML + 原生 JS。
+当代数据管理系统课程大作业（阶段一）：一个简化版在线问卷系统。注册用户创建问卷并通过链接分发，其他登录用户填写，创建者查看统计结果。
 
-需求与决策基准见 [需求基准与任务拆解.md](需求基准与任务拆解.md)，设计与全部设计取舍见 [docs/设计草案.md](docs/设计草案.md)。AI 使用说明与 AI 使用日志（节选）见实验报告。
+- 四种题型：单选、多选（至少 / 最多 / 恰好 N 项）、文本填空（字数）、数字填空（范围、整数）
+- 跳转：按单选、多选、数字结果跳转，规则作为数据存在问卷里，由服务端按规则计算下一题
+- 问卷管理：草稿 → 发布 → 关闭 / 截止 → 重新开放；匿名填写；是否允许同一人多次填写
+- 统计：MongoDB 聚合管道实时计算，支持整份问卷与单题统计
+- 294 个自动测试（含并发与浏览器自动测试）
+
+技术栈：Python 3.13 + FastAPI + PyMongo（MongoDB 8.x）+ pytest + Playwright；前端为后端托管的静态 HTML + 原生 JS。
+
+## 目录结构
+
+```
+app/            后端
+  main.py         创建应用、注册路由、托管页面、启动时初始化数据库
+  routers/        路由层：21 个接口（auth / surveys / questions / fill / stats）
+  services/       业务层：所有数据库读写
+  engine/         规则引擎：问卷结构检查、答案校验、跳转计算（纯函数）
+  models.py       请求 / 响应格式；errors.py 中文错误提示；security.py 密码与令牌
+db/             MongoDB schema：schema.py（$jsonSchema 校验器与索引）、init_db.py（初始化）
+static/         前端页面（登录注册、我的问卷、编辑问卷、填写、统计）
+tests/          自动测试
+docs/           设计文档.md（系统与数据库设计、全部设计取舍）、需求基准与任务拆解.md、screenshots/
+```
+
+设计说明见 [docs/设计文档.md](docs/设计文档.md)，需求基准见 [docs/需求基准与任务拆解.md](docs/需求基准与任务拆解.md)。AI 使用说明与 AI 使用日志（节选）见实验报告。
 
 ## 配置与运行
 
@@ -64,14 +87,14 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 
-测试分为三类，一条命令全部运行：
+共 294 个测试，一条命令全部运行：
 
-| 文件 | 类型 | 内容 |
-|---|---|---|
-| `test_db_schema.py` | 数据库 | 集合、校验器、索引是否按设计生效 |
-| `test_engine.py` | 单元测试 | 校验引擎、跳转引擎（纯函数） |
-| `test_auth.py` `test_surveys.py` `test_questions.py` `test_fill.py` `test_stats.py` `test_pages.py` | API 测试 | 各接口的正常与异常情况、并发 |
-| `test_browser.py` | 浏览器自动测试 | 用 Playwright 控制无界面 Chromium，走完"注册 → 建问卷 → 设跳转 → 发布 → 换账号填写 → 看统计"等流程，并把截图保存到 `docs/screenshots/` |
+| 文件 | 类型 | 数量 | 内容 |
+|---|---|---|---|
+| `test_db_schema.py` | 数据库 | 25 | 集合、校验器、索引是否按设计生效 |
+| `test_engine.py` | 单元测试 | 75 | 校验引擎、跳转引擎（纯函数） |
+| `test_auth.py` `test_surveys.py` `test_questions.py` `test_fill.py` `test_stats.py` `test_errors.py` `test_pages.py` `test_health.py` | API 测试 | 189 | 各接口的正常与异常情况、并发、故障注入、explain 索引验证、中文错误提示 |
+| `test_browser.py` | 浏览器自动测试 | 5 | 用 Playwright 控制无界面 Chromium，走完"注册 → 建问卷 → 设跳转 → 发布 → 换账号填写 → 看统计"等流程，并把截图保存到 `docs/screenshots/` |
 
 浏览器测试需要先下载一次 Chromium（约 120 MB）：
 
