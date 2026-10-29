@@ -312,3 +312,10 @@ def test_bank_access_check_uses_index(client, db, teacher, student):
     query = {"sharedWith": uid(db, "student_01"), "deletedAt": None, "items.questionId": ObjectId(qid)}
     plan = str(db.question_banks.find(query).explain())
     assert "shared_updatedAt" in plan and "COLLSCAN" not in plan
+
+
+def test_my_banks_list_uses_owner_index(client, db, teacher):
+    new_bank(client, teacher)
+    plan = str(db.question_banks.find({"ownerId": uid(db, "teacher_01"), "deletedAt": None})
+               .sort("updatedAt", -1).explain())
+    assert "owner_updatedAt" in plan and "COLLSCAN" not in plan

@@ -378,6 +378,7 @@ def test_library_versions_banks_and_sharing(new_page):
 
     # 2. v2：基于 v1 改选项文字；v3：再基于 v1 改标题（版本树出现分支）；恢复 v2 → v4
     rows.first.get_by_test_id("version-edit").click()
+    expect(teacher.get_by_test_id("edit-usage-notice")).to_contain_text("保存后生成新版本 v2")   # 修改前先看影响范围
     form = teacher.get_by_test_id("question-form")
     form.get_by_test_id("q-option").nth(1).fill("大二（含转专业）")
     form.get_by_test_id("q-note").fill("改措辞")
@@ -427,7 +428,9 @@ def test_library_versions_banks_and_sharing(new_page):
     student.get_by_test_id("version-row").first.get_by_test_id("version-fork").click()
     expect(student.get_by_test_id("version-row")).to_have_count(1)
     expect(student.get_by_test_id("version-edit")).to_have_count(1)    # 复制出来的是自己的题，可以修改
-    expect(student.locator("main")).to_contain_text("复制自另一道题的 v4")
+    derived = student.get_by_test_id("derived-from")                  # 能看到是从哪道题复制来的，并可点回原题
+    expect(derived).to_contain_text("复制自 「你的年级」 v4")
+    expect(derived.get_by_role("link")).to_have_attribute("href", re.compile(r"/static/question\.html\?id="))
     student.goto("/static/library.html")
     expect(student.get_by_test_id("library-item")).to_have_count(1)
 

@@ -6,6 +6,7 @@ let question = null;
 let versions = [];
 let usage = null;
 let myBanks = [];
+let source = null;  // 复制来源的题目详情；原题已删除或不再共享给我时为 null
 let panel = null;   // { kind: "view" | "edit", version: VersionOut }
 
 async function reload() {
@@ -15,7 +16,28 @@ async function reload() {
     api("GET", `/api/questions/${questionId}/usage`),
   ]);
   myBanks = question.isOwner ? await api("GET", "/api/banks?scope=mine") : [];
+  source = question.derivedFrom
+    ? await api("GET", `/api/questions/${question.derivedFrom.questionId}`).catch(() => null) : null;
   render();
+}
+
+// 这道题是从哪道题复制来的（需求四）：看得到原题时显示标题并可点进去
+function derivedFromText() {
+  const d = question.derivedFrom;
+  if (!d) return null;
+  return el("span", { "data-testid": "derived-from" }, " · 复制自 ",
+    source ? el("a", { href: `/static/question.html?id=${d.questionId}` }, `「${source.content.title}」`)
+      : "另一道题（原题已删除或不再共享给你）",
+    ` v${d.version}`);
+}
+
+// 修改前先看影响范围（需求六）：保存只生成新版本，正在用的问卷不受影响
+function usageNotice() {
+  const total = usage.totalSurveys;
+  const text = total === 0 ? "目前没有问卷在用这道题。"
+    : `目前有 ${total} 份问卷在用这道题（${usage.versions.map((v) => `v${v.version} ${v.mine + v.others} 份`).join("，")}）。`;
+  return el("p", { class: "notice", "data-testid": "edit-usage-notice" }, text,
+    `保存后生成新版本 v${question.latest.version + 1}，已有的问卷仍用原来的版本，不受影响；需要时可在问卷编辑页把草稿切换到新版本。`);
 }
 
 async function act(method, path, body, okMessage) {
@@ -92,6 +114,7 @@ function versionPanel() {
   }
   return el("div", { "data-testid": "version-panel" },
     el("h3", {}, `基于 v${v.version} 修改（保存后生成新版本）`),
+    usageNotice(),
     questionForm(v.content, (body, note) => act("POST", `/api/questions/${questionId}/versions`,
       { baseVersion: v.version, content: body, note }, "已生成新版本"),
     { lockType: true, withNote: true, submitLabel: "保存为新版本", onCancel: () => { panel = null; render(); } }));
@@ -144,7 +167,7 @@ function render() {
       el("div", {},
         el("h1", { "data-testid": "question-heading" }, c.title),
         el("p", { class: "muted" }, `${TYPE_LABELS[c.type]} · 最新 v${question.latest.version} · 创建者 ${question.owner}`,
-          question.derivedFrom ? ` · 复制自另一道题的 v${question.derivedFrom.version}` : "")),
+          derivedFromText())),
       el("div", { class: "row" },
         el("a", { class: "btn btn-primary", href: `/static/question-stats.html?id=${questionId}`, "data-testid": "to-cross-stats" },
           "跨问卷统计"),

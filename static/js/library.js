@@ -17,7 +17,7 @@ function questionItem(q) {
       el("div", { class: "muted" },
         `${TYPE_LABELS[q.latest.type]} · 最新 v${q.latest.version} · 更新于 ${fmtTime(q.updatedAt)}`,
         q.isOwner ? "" : ` · 创建者 ${q.owner}`,
-        q.derivedFrom ? ` · 复制自另一道题的 v${q.derivedFrom.version}` : "")),
+        q.derivedFrom ? ` · 复制而来（来源 v${q.derivedFrom.version}，详见题目页）` : "")),
     el("a", { class: "btn", href: `/static/question-stats.html?id=${q.id}` }, "跨问卷统计"));
 }
 

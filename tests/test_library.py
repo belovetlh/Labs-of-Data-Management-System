@@ -314,3 +314,18 @@ def test_list_uses_owner_index(client, db, owner):
     uid = db.users.find_one({"username": "teacher_01"})["_id"]
     plan = str(db.questions.find({"ownerId": uid, "deletedAt": None}).sort("updatedAt", -1).explain())
     assert "owner_updatedAt" in plan and "COLLSCAN" not in plan
+
+
+def test_shared_list_and_version_history_use_indexes(client, db, owner, other):
+    q = create(client, owner)
+    share(client, owner, q["id"], "student_01")
+    student = db.users.find_one({"username": "student_01"})["_id"]
+    # 共享给我的题目（list_questions scope=shared）
+    plan = str(db.questions.find({"sharedWith": student, "deletedAt": None}).sort("updatedAt", -1).explain())
+    assert "shared_updatedAt" in plan and "COLLSCAN" not in plan
+    # 版本历史按序列出、取最新版本（list_versions / _newest_version）
+    qid = ObjectId(q["id"])
+    for cursor in (db.question_versions.find({"questionId": qid}).sort("version", 1),
+                   db.question_versions.find({"questionId": qid}).sort("version", -1).limit(1)):
+        plan = str(cursor.explain())
+        assert "uniq_question_version" in plan and "COLLSCAN" not in plan and "SORT" not in plan.replace("SORT_KEY", "")
