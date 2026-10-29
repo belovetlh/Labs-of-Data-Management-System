@@ -21,6 +21,7 @@ from app.services.surveys import now_utc
 from db.schema import CHOICE_TYPES, MAX_SHARED_USERS, SCHEMA_VERSIONS
 
 VERSION_RETRIES = 5   # 并发撞上同一个版本号时，重新取号的次数
+NOTE_TITLE_CHARS = 40  # 自动生成的版本说明里引用标题时最多取几个字（说明最长 200 字，标题最长 500 字）
 
 
 class QuestionNotFound(Exception):
@@ -77,6 +78,11 @@ def _load_owned(db: Database, user_id: ObjectId, question_id: str) -> dict:
 
 
 # ---------- 版本 ----------
+
+def short_title(title: str) -> str:
+    """自动生成的版本说明里引用题目或问卷标题时截短，保证说明不超过 200 字。"""
+    return title if len(title) <= NOTE_TITLE_CHARS else title[:NOTE_TITLE_CHARS] + "…"
+
 
 def _version(db: Database, question_id: ObjectId, number: int) -> dict:
     version = db.question_versions.find_one({"questionId": question_id, "version": number})
@@ -228,7 +234,7 @@ def fork_question(db: Database, user_id: ObjectId, question_id: str, number: int
     question = load_visible(db, user_id, question_id)
     source = pick_version(db, question, number)
     derived_from = {"questionId": question["_id"], "versionId": source["_id"], "version": source["version"]}
-    note = f"复制自「{source['content']['title']}」v{source['version']}"
+    note = f"复制自「{short_title(source['content']['title'])}」v{source['version']}"
     return insert_question(db, user_id, source["content"], note, "fork", derived_from)
 
 

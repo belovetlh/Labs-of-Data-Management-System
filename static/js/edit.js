@@ -292,7 +292,12 @@ function pickPanel() {
         el("option", { value: "" }, banks.length ? "选择一个题库" : "还没有题库"),
         banks.map((b) => el("option", { value: b.id }, `${b.name}（${b.itemCount} 道题${b.isOwner ? "" : ` · ${b.owner}`}）`)));
       select.addEventListener("change", async () => {
-        items = select.value ? (await api("GET", `/api/banks/${select.value}`)).items : [];
+        try {
+          items = select.value ? (await api("GET", `/api/banks/${select.value}`)).items : [];
+        } catch (err) {
+          items = [];
+          toast(err.message, "error");   // 例如题库刚被删除或取消共享
+        }
         show();
       });
       bankSlot.append(select);

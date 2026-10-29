@@ -127,9 +127,15 @@ def update_question(db: Database, owner_id: ObjectId, survey_id: str, question_i
     elif library_action == "detach":
         new["derivedFrom"] = source
     else:
-        # 先在题库建版本（基于本问卷所用的版本，形成分支），再写回问卷；写回失败时题库里多一个完整的版本，无害
+        # 先用改后的内容做整份检查（如删掉了跳转规则用到的选项）：不通过就不去题库建版本，
+        # 否则问卷改不成，题库里却多了一个版本。新版本里原有选项的 id 与 new 相同，检查结果一致
+        errors = check_survey(questions[:i] + [new] + questions[i + 1:])
+        if errors:
+            raise SurveyConflict("；".join(errors))
+        # 再在题库建版本（基于本问卷所用的版本，形成分支），最后写回问卷；
+        # 写回时问卷恰好被别人改过而失败的话，题库里多一个完整的版本，无害
         version = lib.create_version(db, owner_id, str(source["questionId"]), source["version"], data,
-                                     f"在问卷「{survey['title']}」中修改")
+                                     f"在问卷「{lib.short_title(survey['title'])}」中修改")
         new = snapshot(version, question_id, data["required"], rules)
     questions[i] = new
     _save(db, survey, questions, SurveyConflict)

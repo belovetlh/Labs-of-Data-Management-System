@@ -248,7 +248,11 @@ def _boundaries(low: float, high: float, width: float) -> list:
         end += 1
     if end - start > MAX_BUCKETS:
         raise InvalidDefinition(f"区间宽度太小：会分成 {end - start} 个区间，最多 {MAX_BUCKETS} 个")
-    return [_clean(i * width) for i in range(start, end + 1)]
+    bounds = [_clean(i * width) for i in range(start, end + 1)]
+    # 宽度小到去掉浮点误差后相邻边界相同（如 1e-11），$bucket 会直接报错，这里先拒绝
+    if any(a >= b for a, b in zip(bounds, bounds[1:])) or not (bounds[0] <= low and high < bounds[-1]):
+        raise InvalidDefinition("区间宽度太小，无法划分区间")
+    return bounds
 
 
 def _merged_options(versions: list[dict]) -> list[dict]:

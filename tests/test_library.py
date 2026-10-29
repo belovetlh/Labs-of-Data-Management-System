@@ -258,6 +258,15 @@ def test_fork_shared_question(client, db, owner, other):
     assert client.get(f"{API}/{q['id']}", headers=owner).json()["latest"]["version"] == 1
 
 
+def test_fork_long_title_note_is_shortened(client, owner):
+    """自动生成的说明引用标题时截短：标题最长 500 字，说明最长 200 字。"""
+    q = create(client, owner, {**AGE, "title": "长" * 300})
+    r = client.post(f"{API}/{q['id']}/fork", headers=owner)
+    assert r.status_code == 201, r.text
+    [v] = history(client, owner, r.json()["id"])
+    assert v["note"] == f"复制自「{'长' * lib.NOTE_TITLE_CHARS}…」v1"
+
+
 def test_fork_defaults_to_latest_and_owner_can_fork(client, owner):
     q = create(client, owner)
     new_version(client, owner, q["id"], 1, age(100))

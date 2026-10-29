@@ -130,6 +130,15 @@ def test_too_small_bucket_size_rejected(client, teacher, student):
                       params={"bucketSize": 0}).status_code == 422
 
 
+def test_bucket_size_too_small_to_split_rejected(client, teacher, student):
+    """宽度小到去掉浮点误差后相邻边界相同：返回 422，而不是让 $bucket 报错（500）。"""
+    lq = new_lib_question(client, teacher, AGE)
+    slug, q, _ = survey_with(client, teacher, lq["id"], "问卷")
+    fill(client, student, slug, {q: 17})
+    r = client.get(f"{QAPI}/{lq['id']}/stats", headers=teacher, params={"bucketSize": 1e-11})
+    assert r.status_code == 422 and "区间宽度太小" in r.json()["detail"]
+
+
 # ---------- 选择题 ----------
 
 def test_choice_merged_by_option_id_across_versions(client, teacher, student):

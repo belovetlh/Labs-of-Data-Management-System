@@ -186,6 +186,32 @@ def test_new_version_from_survey(client, teacher):
     assert (versions[1]["parentVersion"], versions[1]["note"]) == (1, "在问卷「期中调查」中修改")
 
 
+def test_new_version_rejected_by_jump_rules_leaves_library_unchanged(client, teacher):
+    """改后会让本题跳转规则失效：问卷不改，题库里也不留下新版本。"""
+    lq = new_lib_question(client, teacher)
+    sid = new_survey(client, teacher)
+    [q] = add_from_library(client, teacher, sid, lq["id"]).json()["questions"]
+    third = q["options"][2]["id"]
+    client.put(f"{SAPI}/{sid}/questions/{q['id']}/jump-rules", headers=teacher,
+               json={"rules": [{"when": {"op": "eq", "value": third}, "goto": "END"}]})
+    r = edit(client, teacher, sid, q["id"], with_ids(GRADE, q, ["大一", "大二"]), "new_version")   # 删掉"大三"
+    assert r.status_code == 409 and "不存在的选项" in r.json()["detail"]
+    versions = client.get(f"{QAPI}/{lq['id']}/versions", headers=teacher).json()
+    assert [v["version"] for v in versions] == [1]
+    assert survey_questions(client, teacher, sid)[0]["source"]["version"] == 1
+
+
+def test_new_version_from_long_titled_survey(client, teacher):
+    lq = new_lib_question(client, teacher)
+    sid = new_survey(client, teacher, title="问" * 200)
+    [q] = add_from_library(client, teacher, sid, lq["id"]).json()["questions"]
+    r = edit(client, teacher, sid, q["id"], {**with_ids(GRADE, q, ["大一", "大二", "大三"]), "title": "你现在的年级"},
+             "new_version")
+    assert r.status_code == 200, r.text
+    v2 = client.get(f"{QAPI}/{lq['id']}/versions", headers=teacher).json()[-1]
+    assert v2["note"] == f"在问卷「{'问' * lib.NOTE_TITLE_CHARS}…」中修改" and len(v2["note"]) <= 200
+
+
 def test_new_version_needs_library_ownership(client, teacher, student):
     lq = new_lib_question(client, teacher)
     client.post(f"{QAPI}/{lq['id']}/shares", headers=teacher, json={"username": "student_01"})
