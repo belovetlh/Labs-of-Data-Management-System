@@ -8,7 +8,7 @@ import pytest
 from bson import ObjectId
 
 from app.services import surveys as svc
-from db.schema import SCHEMA_VERSION
+from db.schema import SCHEMA_VERSIONS
 
 API = "/api/surveys"
 
@@ -50,7 +50,7 @@ def set_deadline_in_db(db, survey_id, dt):
 
 def add_response(db, survey_id):
     db.responses.insert_one({
-        "schemaVersion": SCHEMA_VERSION, "surveyId": ObjectId(survey_id),
+        "schemaVersion": SCHEMA_VERSIONS["responses"], "surveyId": ObjectId(survey_id),
         "submittedAt": datetime.now(timezone.utc),
         "answers": [{"questionId": "q_a0000001", "value": "o_b0000001"}],
     })

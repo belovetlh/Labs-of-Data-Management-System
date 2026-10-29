@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db import get_db
 from app.errors import register_error_handlers
-from app.routers import auth, fill, questions, stats, surveys
+from app.routers import auth, banks, fill, library, questions, stats, surveys
 from db.init_db import init_db
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -27,6 +27,8 @@ app.include_router(surveys.router)
 app.include_router(questions.router)
 app.include_router(fill.router)
 app.include_router(stats.router)
+app.include_router(library.router)
+app.include_router(banks.router)
 
 
 @app.get("/api/health")

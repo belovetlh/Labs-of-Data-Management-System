@@ -13,6 +13,8 @@ const TYPE_LABELS = {
   text_input: "文本填空",
   number_input: "数字填空",
 };
+// 题库里一个版本是怎么来的（阶段二）
+const KIND_LABELS = { create: "新建", edit: "修改", restore: "恢复", fork: "复制" };
 
 // ---------- 登录状态 ----------
 
@@ -158,7 +160,10 @@ function fromLocalInput(value) {
 function renderHeader() {
   const user = getUser();
   const header = el("header", { class: "topbar" },
-    el("a", { href: "/static/surveys.html", class: "brand" }, "问卷系统"),
+    el("div", { class: "row" },
+      el("a", { href: "/static/surveys.html", class: "brand" }, "问卷系统"),
+      user ? el("a", { href: "/static/surveys.html", class: "nav-link", "data-testid": "nav-surveys" }, "我的问卷") : null,
+      user ? el("a", { href: "/static/library.html", class: "nav-link", "data-testid": "nav-library" }, "题库") : null),
     el("nav", {},
       user ? el("span", { class: "who", "data-testid": "current-user" }, `${user.displayName}（${user.username}）`) : null,
       user ? el("button", {
@@ -172,4 +177,31 @@ function renderHeader() {
 
 function queryParam(name) {
   return new URLSearchParams(location.search).get(name);
+}
+
+// ---------- 统计条形（阶段一统计页与阶段二跨问卷统计共用） ----------
+
+function barRow(label, percent, text, testid = "option-stat") {
+  return el("div", { class: "bar-row", "data-testid": testid },
+    el("span", {}, label),
+    el("div", { class: "bar-track" }, el("div", { class: "bar-fill", style: `width: ${Math.min(percent, 100)}%` })),
+    el("span", { "data-testid": "option-count" }, text));
+}
+
+// ---------- 共享名单（阶段二：题目、题库共用） ----------
+
+// sharedWith 为 [{ username, displayName }]；onAdd / onRemove 返回 Promise，由页面负责请求并刷新
+function shareBox(sharedWith, onAdd, onRemove) {
+  const input = el("input", { type: "text", class: "small", placeholder: "对方的账号", "data-testid": "share-username" });
+  return el("div", { class: "card stack", "data-testid": "share-box" },
+    el("h2", {}, "共享"),
+    el("p", { class: "hint" }, "被共享的人可以查看、用到自己的问卷里、复制为自己的题，但不能修改。"),
+    sharedWith.length === 0 ? el("p", { class: "muted" }, "还没有共享给任何人。") :
+      el("ul", { class: "entries" }, sharedWith.map((u) => el("li", { class: "spread", "data-testid": "shared-user" },
+        el("span", {}, `${u.displayName}（${u.username}）`),
+        el("button", { class: "btn btn-danger", "data-testid": "unshare",
+                       onclick: () => onRemove(u.username) }, "取消共享")))),
+    el("form", { class: "row", onsubmit: (e) => { e.preventDefault(); if (input.value.trim()) onAdd(input.value.trim()); } },
+      input, el("button", { type: "submit", class: "btn", "data-testid": "share-add" }, "共享")),
+  );
 }

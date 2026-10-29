@@ -38,6 +38,8 @@ p { margin: 4px 0; }
 .brand { font-weight: 600; color: var(--text); text-decoration: none; }
 .topbar nav { display: flex; gap: 12px; align-items: center; }
 .who { color: var(--muted); }
+.nav-link { color: var(--text); text-decoration: none; margin-left: 14px; }
+.nav-link:hover { color: var(--primary); }
 
 .card {
   background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -107,6 +109,18 @@ input.small, select.small { width: auto; min-width: 90px; }
 
 .progress { height: 6px; background: #eef1f5; border-radius: 3px; overflow: hidden; margin: 8px 0 16px; }
 .progress > div { height: 100%; background: var(--primary); }
+
+/* ---------- 阶段二：题库 ---------- */
+.badge-lib { color: var(--primary); border-color: #b9cdf7; }
+.badge-new { color: var(--warn); border-color: #f2cf9a; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: normal; }
+.table-wrap { overflow-x: auto; }
+.list-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.list-item:last-child { border-bottom: none; }
+.notice { background: #fff8eb; border: 1px solid #f2cf9a; border-radius: 6px; padding: 10px 12px; }
+.content-view { background: #f7f8fa; border-radius: 6px; padding: 8px 12px; margin-top: 6px; }
 
 @media (max-width: 600px) {
   .bar-row { grid-template-columns: 1fr; gap: 2px; }

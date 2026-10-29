@@ -16,7 +16,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.engine.structure import check_survey
-from db.schema import SCHEMA_VERSION
+from db.schema import SCHEMA_VERSIONS
 
 SLUG_ALPHABET = string.ascii_letters + string.digits
 SLUG_LENGTH = 8
@@ -70,7 +70,7 @@ def _not_deadline_passed(now: datetime) -> dict:
 def create_survey(db: Database, owner_id: ObjectId, title: str, description: str, settings: dict) -> dict:
     now = now_utc()
     doc = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS["surveys"],
         "revision": 0,
         "ownerId": owner_id,
         "title": title,
@@ -276,11 +276,24 @@ def to_summary(survey: dict, now: datetime | None = None) -> dict:
     }
 
 
+def _ref_out(ref: dict) -> dict:
+    return {"questionId": str(ref["questionId"]), "versionId": str(ref["versionId"]), "version": ref["version"]}
+
+
+def question_out(q: dict) -> dict:
+    """问卷里的一道题的输出格式：题库来源里的 ObjectId 转成字符串，其余字段原样输出。"""
+    out = dict(q)
+    for key in ("source", "derivedFrom"):
+        if key in out:
+            out[key] = _ref_out(out[key])
+    return out
+
+
 def to_detail(survey: dict, now: datetime | None = None) -> dict:
     return {
         **to_summary(survey, now),
         "description": survey["description"],
-        "questions": survey["questions"],
+        "questions": [question_out(q) for q in survey["questions"]],
         "updated_at": survey["updatedAt"],
         "closed_at": survey.get("closedAt"),
     }

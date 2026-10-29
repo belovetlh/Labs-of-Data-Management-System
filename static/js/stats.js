@@ -11,12 +11,7 @@ function entryItem(e) {
 }
 
 function choiceBlock(q) {
-  return el("div", {}, q.options.map((o) =>
-    el("div", { class: "bar-row", "data-testid": "option-stat" },
-      el("span", {}, o.label),
-      el("div", { class: "bar-track" }, el("div", { class: "bar-fill", style: `width: ${Math.min(o.percent, 100)}%` })),
-      el("span", { "data-testid": "option-count" }, `${o.count} · ${o.percent}%`),
-    )));
+  return el("div", {}, q.options.map((o) => barRow(o.label, o.percent, `${o.count} · ${o.percent}%`)));
 }
 
 function entriesBlock(q) {

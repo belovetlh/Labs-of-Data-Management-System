@@ -1,9 +1,11 @@
 // 编辑问卷（仅草稿）：基本信息、题目增删改与上下移动、跳转规则、发布。已发布的问卷只读。
+// 阶段二：从题库选题、切换来自题库的题所用的版本、修改时选择"只改本问卷 / 存为新版本"、把题存入题库（已发布也可以）。
 
 const app = document.getElementById("app");
 const surveyId = queryParam("id");
 let survey = null;
-let openPanel = null;   // 当前展开的编辑面板：{ kind: "add" | "edit" | "rules", qid }
+// 当前展开的面板：{ kind: "add" | "edit" | "rules" | "pick" | "switch" | "libraryChoice", qid, body }
+let openPanel = null;
 
 const OPS_BY_TYPE = {
   single_choice: [["eq", "选了"], ["in", "选了其中任一"]],
@@ -14,6 +16,11 @@ const OPS_BY_TYPE = {
 
 async function reload(detail) {
   survey = detail || await api("GET", `/api/surveys/${surveyId}`);
+  render();
+}
+
+function closePanel() {
+  openPanel = null;
   render();
 }
 
@@ -52,115 +59,6 @@ function ruleText(q, r) {
   }
   const target = r.goto === "END" ? "结束问卷" : questionNo(r.goto);
   return `如果${op ? op[1] : r.when.op}「${value}」→ 跳到${target}`;
-}
-
-function validationText(q) {
-  const v = q.validation || {};
-  const parts = [];
-  if (q.type === "multiple_choice") {
-    if (v.minSelect != null && v.minSelect === v.maxSelect) parts.push(`必须选 ${v.minSelect} 项`);
-    else {
-      if (v.minSelect != null) parts.push(`至少选 ${v.minSelect} 项`);
-      if (v.maxSelect != null) parts.push(`最多选 ${v.maxSelect} 项`);
-    }
-  }
-  if (q.type === "text_input") {
-    if (v.minLength != null) parts.push(`至少 ${v.minLength} 字`);
-    if (v.maxLength != null) parts.push(`最多 ${v.maxLength} 字`);
-  }
-  if (q.type === "number_input") {
-    if (v.integer) parts.push("必须为整数");
-    if (v.min != null) parts.push(`最小 ${v.min}`);
-    if (v.max != null) parts.push(`最大 ${v.max}`);
-  }
-  return parts.join("，");
-}
-
-// ---------- 题目表单（添加 / 修改共用） ----------
-
-function numberOrNull(input) {
-  return input.value === "" ? null : Number(input.value);
-}
-
-function questionForm(existing, onSubmit) {
-  const typeSelect = el("select", { "data-testid": "q-type" },
-    Object.entries(TYPE_LABELS).map(([k, label]) => el("option", { value: k }, label)));
-  typeSelect.value = existing ? existing.type : "single_choice";
-  const title = el("input", { type: "text", "data-testid": "q-title", value: existing ? existing.title : "" });
-  const required = el("input", { type: "checkbox", "data-testid": "q-required", checked: existing ? existing.required : false });
-  const optionsBox = el("div", { "data-testid": "q-options" });
-  const rulesBox = el("div");
-  const v = (existing && existing.validation) || {};
-  const fields = {
-    minSelect: el("input", { type: "number", min: 0, class: "small", "data-testid": "q-min-select", value: v.minSelect ?? "" }),
-    maxSelect: el("input", { type: "number", min: 1, class: "small", "data-testid": "q-max-select", value: v.maxSelect ?? "" }),
-    minLength: el("input", { type: "number", min: 0, class: "small", "data-testid": "q-min-length", value: v.minLength ?? "" }),
-    maxLength: el("input", { type: "number", min: 1, class: "small", "data-testid": "q-max-length", value: v.maxLength ?? "" }),
-    min: el("input", { type: "number", step: "any", class: "small", "data-testid": "q-min", value: v.min ?? "" }),
-    max: el("input", { type: "number", step: "any", class: "small", "data-testid": "q-max", value: v.max ?? "" }),
-    integer: el("input", { type: "checkbox", "data-testid": "q-integer", checked: Boolean(v.integer) }),
-  };
-
-  function addOption(label = "", id = null) {
-    const input = el("input", { type: "text", value: label, "data-testid": "q-option" });
-    if (id) input.dataset.optionId = id;   // 原有选项保留 id，改文字不影响跳转规则
-    const row = el("div", { class: "option-row" }, input,
-      el("button", { type: "button", class: "btn btn-danger", onclick: () => row.remove() }, "删除"));
-    optionsBox.append(row);
-  }
-
-  function renderTypeFields() {
-    const t = typeSelect.value;
-    clear(rulesBox);
-    if (t === "single_choice" || t === "multiple_choice") {
-      rulesBox.append(
-        el("h3", {}, "选项"), optionsBox,
-        el("button", { type: "button", class: "btn", "data-testid": "q-add-option", onclick: () => addOption() }, "添加选项"),
-      );
-      if (optionsBox.children.length === 0) { addOption(); addOption(); }
-    }
-    if (t === "multiple_choice") {
-      rulesBox.append(el("div", { class: "row" }, "至少选", fields.minSelect, "项，最多选", fields.maxSelect,
-        "项", el("span", { class: "hint" }, "（两者相等即「必须选 N 项」，留空表示不限）")));
-    }
-    if (t === "text_input") {
-      rulesBox.append(el("div", { class: "row" }, "至少", fields.minLength, "字，最多", fields.maxLength, "字"));
-    }
-    if (t === "number_input") {
-      rulesBox.append(el("div", { class: "row" }, "最小值", fields.min, "最大值", fields.max,
-        el("label", { class: "inline" }, fields.integer, "必须为整数")));
-    }
-  }
-
-  (existing && existing.options || []).forEach((o) => addOption(o.label, o.id));
-  typeSelect.addEventListener("change", renderTypeFields);
-  renderTypeFields();
-
-  function collect() {
-    const t = typeSelect.value;
-    const body = { type: t, title: title.value, required: required.checked };
-    if (t === "single_choice" || t === "multiple_choice") {
-      body.options = [...optionsBox.querySelectorAll("input")].map((i) =>
-        i.dataset.optionId ? { id: i.dataset.optionId, label: i.value } : { label: i.value });
-    }
-    if (t === "multiple_choice") body.validation = { minSelect: numberOrNull(fields.minSelect), maxSelect: numberOrNull(fields.maxSelect) };
-    if (t === "text_input") body.validation = { minLength: numberOrNull(fields.minLength), maxLength: numberOrNull(fields.maxLength) };
-    if (t === "number_input") body.validation = { min: numberOrNull(fields.min), max: numberOrNull(fields.max), integer: fields.integer.checked };
-    return body;
-  }
-
-  return el("form", {
-    class: "card stack", "data-testid": "question-form",
-    onsubmit: (e) => { e.preventDefault(); onSubmit(collect()); },
-  },
-    el("div", { class: "row" }, el("label", { class: "inline" }, "题型", typeSelect),
-      el("label", { class: "inline" }, required, "必答")),
-    el("label", {}, "题目", title),
-    rulesBox,
-    el("div", { class: "row" },
-      el("button", { type: "submit", class: "btn btn-primary", "data-testid": "q-save" }, existing ? "保存修改" : "添加"),
-      el("button", { type: "button", class: "btn", onclick: () => { openPanel = null; render(); } }, "取消")),
-  );
 }
 
 // ---------- 跳转规则编辑器 ----------
@@ -227,7 +125,7 @@ function ruleEditor(q, index) {
         onclick: () => call("PUT", `/api/surveys/${surveyId}/questions/${q.id}/jump-rules`,
           { rules: [...list.children].map((r) => r.readRule()) }, "跳转规则已保存"),
       }, "保存规则"),
-      el("button", { type: "button", class: "btn", onclick: () => { openPanel = null; render(); } }, "取消")),
+      el("button", { type: "button", class: "btn", onclick: closePanel }, "取消")),
   );
 }
 
@@ -267,12 +165,181 @@ function move(index, delta) {
   call("PUT", `/api/surveys/${surveyId}/question-order`, { questionIds: ids });
 }
 
+// ---------- 阶段二：问卷 ↔ 题库 ----------
+
+// 修改题目：来自题库的题改了内容时，后端返回 409 要求选择处理方式（是否"改了内容"只由后端判断，见设计 4.7 节）
+async function saveQuestion(q, body, action) {
+  const url = `/api/surveys/${surveyId}/questions/${q.id}` + (action ? `?libraryAction=${action}` : "");
+  try {
+    const detail = await api("PUT", url, body);
+    openPanel = null;
+    toast({ detach: "已保存；这道题不再关联题库", new_version: "已保存，并在题库中生成了新版本" }[action] || "已保存",
+          "success");
+    await reload(detail);
+  } catch (err) {
+    if (err.status === 409 && q.source && !action && err.message.includes("libraryAction")) {
+      openPanel = { kind: "libraryChoice", qid: q.id, body };
+      render();
+      return;
+    }
+    toast(err.message, "error");
+  }
+}
+
+function libraryChoicePanel(q) {
+  const lib = q.library || {};
+  const canNewVersion = lib.available && lib.canEdit;
+  const body = openPanel.body;
+  return el("div", { class: "card stack notice", "data-testid": "library-choice" },
+    el("p", {}, `这道题来自题库（v${q.source.version}），你改了题目内容。请选择保存方式：`),
+    el("div", { class: "row" },
+      el("button", { class: "btn", "data-testid": "choice-detach", onclick: () => saveQuestion(q, body, "detach") },
+        "只改本问卷"),
+      canNewVersion ? el("button", {
+        class: "btn btn-primary", "data-testid": "choice-new-version",
+        onclick: () => saveQuestion(q, body, "new_version"),
+      }, "存为题库新版本") : null,
+      el("button", { class: "btn", onclick: () => { openPanel = { kind: "edit", qid: q.id, body }; render(); } },
+        "返回修改")),
+    el("p", { class: "hint" }, "只改本问卷：这道题与题库脱钩，题库和别的问卷都不受影响，以后也不再计入这道题的跨问卷统计。"),
+    canNewVersion
+      ? el("p", { class: "hint" }, "存为题库新版本：题库里多一个版本，本问卷改用它；已经用旧版本的问卷不受影响。")
+      : el("p", { class: "hint" }, "这道题不是你创建的（或已不能使用），只能只改本问卷；也可以先在题库中把它复制为自己的题。"),
+  );
+}
+
+function switchPanel(q) {
+  const select = el("select", { class: "small", "data-testid": "switch-version" });
+  api("GET", `/api/questions/${q.source.questionId}/versions`).then((versions) => {
+    select.append(...versions.map((v) => el("option", { value: v.version },
+      `v${v.version}：${v.title}${v.version === q.source.version ? "（当前）" : ""}`)));
+    select.value = String(q.library.latestVersion);
+  }).catch((err) => toast(err.message, "error"));
+  return el("div", { class: "card stack", "data-testid": "switch-panel" },
+    el("div", { class: "row" }, "换成题库里的", select,
+      el("button", {
+        class: "btn btn-primary", "data-testid": "switch-save",
+        onclick: () => call("PUT", `/api/surveys/${surveyId}/questions/${q.id}/source`,
+          { version: Number(select.value) }, "已切换版本"),
+      }, "切换"),
+      el("button", { class: "btn", onclick: closePanel }, "取消")),
+    el("p", { class: "hint" }, "保留本问卷里的必答设置和跳转规则；新版本删掉了跳转规则用到的选项时会被拒绝。"));
+}
+
+// 从题库选题：我的题目 / 共享给我的 / 题库（先选题库再选题）
+function pickPanel() {
+  const used = new Set(survey.questions.filter((q) => q.source).map((q) => q.source.questionId));
+  const filter = el("input", { type: "text", placeholder: "按标题筛选", "data-testid": "pick-filter" });
+  const tabBar = el("div", { class: "tabs" });
+  const bankSlot = el("div");
+  const list = el("div", { "data-testid": "pick-list" });
+  let items = [];
+
+  const add = (item, version) => call("POST", `/api/surveys/${surveyId}/questions/from-library`,
+    version ? { questionId: item.id, version } : { questionId: item.id }, "已从题库加入");
+
+  function row(item) {
+    const actions = el("div", { class: "row" });
+    if (used.has(item.id)) {
+      actions.append(el("button", { class: "btn", disabled: true }, "已添加"));
+    } else {
+      actions.append(
+        el("button", { class: "btn btn-primary", "data-testid": "pick-add", onclick: () => add(item) },
+          `加入（v${item.latest.version}）`),
+        el("button", {
+          class: "btn btn-link", "data-testid": "pick-other-version",
+          onclick: async () => {
+            try {
+              const versions = await api("GET", `/api/questions/${item.id}/versions`);
+              const select = el("select", { class: "small", "data-testid": "pick-version" },
+                versions.map((v) => el("option", { value: v.version }, `v${v.version}：${v.title}`)));
+              clear(actions).append(select, el("button", {
+                class: "btn btn-primary", "data-testid": "pick-add-version",
+                onclick: () => add(item, Number(select.value)),
+              }, "加入"));
+            } catch (err) { toast(err.message, "error"); }
+          },
+        }, "其他版本"));
+    }
+    return el("div", { class: "list-item", "data-testid": "pick-item" },
+      el("div", {},
+        el("div", {}, item.latest.title),
+        el("div", { class: "muted" }, `${TYPE_LABELS[item.latest.type]} · v${item.latest.version}`,
+          item.isOwner ? "" : ` · ${item.owner}`)),
+      actions);
+  }
+
+  function show() {
+    const word = filter.value.trim();
+    const shown = items.filter((i) => !word || i.latest.title.includes(word));
+    clear(list).append(...(shown.length ? shown.map(row) : [el("p", { class: "muted" }, "没有可选的题。")]));
+  }
+
+  async function load(tab) {
+    clear(tabBar).append(...[["mine", "我的题目"], ["shared", "共享给我的"], ["banks", "题库"]].map(([k, label]) =>
+      el("button", { class: "tab" + (k === tab ? " active" : ""), "data-testid": `pick-tab-${k}`,
+                     onclick: () => load(k) }, label)));
+    clear(bankSlot);
+    items = [];
+    try {
+      if (tab !== "banks") {
+        items = await api("GET", `/api/questions?scope=${tab}`);
+        return show();
+      }
+      const [mine, shared] = await Promise.all([api("GET", "/api/banks?scope=mine"), api("GET", "/api/banks?scope=shared")]);
+      const banks = [...mine, ...shared];
+      const select = el("select", { "data-testid": "pick-bank" },
+        el("option", { value: "" }, banks.length ? "选择一个题库" : "还没有题库"),
+        banks.map((b) => el("option", { value: b.id }, `${b.name}（${b.itemCount} 道题${b.isOwner ? "" : ` · ${b.owner}`}）`)));
+      select.addEventListener("change", async () => {
+        items = select.value ? (await api("GET", `/api/banks/${select.value}`)).items : [];
+        show();
+      });
+      bankSlot.append(select);
+      show();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  }
+
+  filter.addEventListener("input", show);
+  load("mine");
+  return el("div", { class: "card stack", "data-testid": "pick-panel" },
+    el("div", { class: "spread" }, el("h3", {}, "从题库选题"),
+      el("button", { class: "btn", onclick: closePanel }, "关闭")),
+    tabBar, bankSlot, filter, list,
+    el("p", { class: "hint" }, "加入的是题目内容的副本：之后题库里有新版本，本问卷不会自动改变，可以在题目上切换版本。"));
+}
+
+function libraryLine(q) {
+  if (q.source) {
+    const lib = q.library || { available: false };
+    return el("div", { class: "row", "data-testid": "library-line" },
+      el("span", { class: "badge badge-lib", "data-testid": "library-badge" }, `题库 v${q.source.version}`),
+      lib.available && !lib.isLatest
+        ? el("span", { class: "badge badge-new", "data-testid": "library-newer" }, `题库已有 v${lib.latestVersion}`) : null,
+      lib.available
+        ? el("a", { class: "muted", href: `/static/question.html?id=${q.source.questionId}` }, "在题库中查看")
+        : el("span", { class: "muted" }, "题库中已删除或不再共享给你（本问卷照常使用）"));
+  }
+  if (q.derivedFrom) {
+    return el("div", { class: "muted", "data-testid": "library-line" }, `已脱钩：改自题库 v${q.derivedFrom.version}，不再关联`);
+  }
+  return null;
+}
+
+// ---------- 题目卡片 ----------
+
 function questionCard(q, i, editable) {
   const details = el("div", { class: "muted" },
     q.options ? `选项：${q.options.map((o) => o.label).join(" / ")}` : null,
     validationText(q) ? el("div", {}, `规则：${validationText(q)}`) : null,
     (q.jumpRules || []).map((r) => el("div", { "data-testid": "rule-summary" }, `跳转：${ruleText(q, r)}`)),
   );
+  const saveButton = q.source ? null : el("button", {
+    class: "btn", "data-testid": "q-save-to-library",
+    onclick: () => call("POST", `/api/surveys/${surveyId}/questions/${q.id}/save-to-library`, {}, "已存入题库"),
+  }, "存入题库");
   const buttons = editable ? el("div", { class: "row" },
     el("button", { class: "btn", disabled: i === 0, onclick: () => move(i, -1) }, "上移"),
     el("button", { class: "btn", disabled: i === survey.questions.length - 1, onclick: () => move(i, 1) }, "下移"),
@@ -281,23 +348,44 @@ function questionCard(q, i, editable) {
       class: "btn", "data-testid": "q-rules",
       onclick: () => { openPanel = { kind: "rules", qid: q.id }; render(); },
     }, "跳转规则") : null,
+    q.source && q.library && q.library.available ? el("button", {
+      class: "btn", "data-testid": "q-switch",
+      onclick: () => { openPanel = { kind: "switch", qid: q.id }; render(); },
+    }, "切换版本") : null,
+    saveButton,
     el("button", {
       class: "btn btn-danger", "data-testid": "q-delete",
       onclick: () => { if (window.confirm(`删除${questionNo(q.id)}「${q.title}」？`)) call("DELETE", `/api/surveys/${surveyId}/questions/${q.id}`, undefined, "已删除"); },
     }, "删除"),
-  ) : null;
+  ) : (saveButton ? el("div", { class: "row" }, saveButton) : null);   // 已发布：只能存入题库，内容不变
 
   const card = el("div", { class: "card question", "data-testid": "question-card" },
     el("h3", {}, `${i + 1}. `, q.title, q.required ? el("span", { class: "required" }, "*") : null,
       el("span", { class: "muted" }, `  ${TYPE_LABELS[q.type]}`)),
-    details, buttons);
-  if (openPanel && openPanel.qid === q.id && openPanel.kind === "edit") {
-    return [card, questionForm(q, (body) => call("PUT", `/api/surveys/${surveyId}/questions/${q.id}`, body, "已保存"))];
+    libraryLine(q), details, buttons);
+  const panel = openPanel && openPanel.qid === q.id ? openPanel.kind : null;
+  if (panel === "edit") {
+    // 从"选择保存方式"返回时，表单里保留刚才改过的内容
+    const current = openPanel.body ? { ...q, ...openPanel.body } : q;
+    return [card, questionForm(current, (body) => saveQuestion(q, body), { onCancel: closePanel })];
   }
-  if (openPanel && openPanel.qid === q.id && openPanel.kind === "rules") {
-    return [card, ruleEditor(q, i)];
-  }
+  if (panel === "rules") return [card, ruleEditor(q, i)];
+  if (panel === "switch") return [card, switchPanel(q)];
+  if (panel === "libraryChoice") return [card, libraryChoicePanel(q)];
   return card;
+}
+
+function addControls() {
+  if (openPanel && openPanel.kind === "add") {
+    return questionForm(null, (body) => call("POST", `/api/surveys/${surveyId}/questions`, body, "已添加"),
+      { onCancel: closePanel });
+  }
+  if (openPanel && openPanel.kind === "pick") return pickPanel();
+  return el("div", { class: "row" },
+    el("button", { class: "btn btn-primary", "data-testid": "add-question",
+                   onclick: () => { openPanel = { kind: "add" }; render(); } }, "添加题目"),
+    el("button", { class: "btn", "data-testid": "pick-from-library",
+                   onclick: () => { openPanel = { kind: "pick" }; render(); } }, "从题库选题"));
 }
 
 function render() {
@@ -316,17 +404,14 @@ function render() {
       }, "发布问卷") : null,
     ),
     editable ? null : el("div", { class: "card" },
-      el("p", {}, "问卷已发布，内容不能再修改；如有问题请删除后重新创建。"),
+      el("p", {}, "问卷已发布，内容不能再修改；如有问题请删除后重新创建。题目仍可以存入题库（内容不变）。"),
       el("p", {}, "分享链接：", el("span", { class: "share", "data-testid": "share-url" }, location.origin + survey.shareUrl)),
       el("a", { class: "btn btn-primary", href: `/static/stats.html?id=${survey.id}` }, "查看统计")),
     editable ? infoForm() : null,
     el("h2", {}, "题目"),
     survey.questions.length === 0 ? el("p", { class: "muted" }, "还没有题目。") : null,
     survey.questions.map((q, i) => questionCard(q, i, editable)),
-    editable ? (openPanel && openPanel.kind === "add"
-      ? questionForm(null, (body) => call("POST", `/api/surveys/${surveyId}/questions`, body, "已添加"))
-      : el("button", { class: "btn btn-primary", "data-testid": "add-question",
-                       onclick: () => { openPanel = { kind: "add" }; render(); } }, "添加题目")) : null,
+    editable ? addControls() : null,
   ));
 }
 

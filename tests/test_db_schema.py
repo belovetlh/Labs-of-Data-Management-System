@@ -1,5 +1,6 @@
 """数据库初始化测试：集合、校验器、索引是否按设计生效。"""
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -7,14 +8,14 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, WriteError
 
 from db.init_db import init_db
-from db.schema import INDEXES, SCHEMA_VERSION, VALIDATORS
+from db.schema import INDEXES, SCHEMA_VERSIONS, VALIDATORS
 
 NOW = datetime.now(timezone.utc)
 
 
 def make_user(**overrides):
     doc = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS["users"],
         "username": "alice",
         "displayName": "爱丽丝",
         "passwordHash": "$2b$12$hash",
@@ -26,7 +27,7 @@ def make_user(**overrides):
 
 def make_survey(**overrides):
     doc = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS["surveys"],
         "revision": 0,
         "ownerId": ObjectId(),
         "title": "大学生生活调查",
@@ -206,7 +207,7 @@ def test_number_rule_types_checked(db):
 def test_named_and_anonymous_responses_accepted(db):
     survey_id = ObjectId()
     db.responses.insert_one({
-        "schemaVersion": SCHEMA_VERSION, "surveyId": survey_id, "respondentId": ObjectId(),
+        "schemaVersion": SCHEMA_VERSIONS["responses"], "surveyId": survey_id, "respondentId": ObjectId(),
         "submittedAt": NOW,
         "answers": [
             {"questionId": "q_a0000001", "value": "o_b0000001"},
@@ -215,21 +216,21 @@ def test_named_and_anonymous_responses_accepted(db):
         ],
     })
     db.responses.insert_one({  # 匿名：没有 respondentId
-        "schemaVersion": SCHEMA_VERSION, "surveyId": survey_id, "submittedAt": NOW,
+        "schemaVersion": SCHEMA_VERSIONS["responses"], "surveyId": survey_id, "submittedAt": NOW,
         "answers": [{"questionId": "q_a0000004", "value": "没有建议，谢谢"}],
     })
 
 
 def test_phone_number_stored_as_int64(db):
     db.responses.insert_one({
-        "schemaVersion": SCHEMA_VERSION, "surveyId": ObjectId(), "submittedAt": NOW,
+        "schemaVersion": SCHEMA_VERSIONS["responses"], "surveyId": ObjectId(), "submittedAt": NOW,
         "answers": [{"questionId": "q_a0000003", "value": 13800138000}],
     })
 
 
 def test_answer_value_object_rejected(db):
     assert_rejected(db.responses, {
-        "schemaVersion": SCHEMA_VERSION, "surveyId": ObjectId(), "submittedAt": NOW,
+        "schemaVersion": SCHEMA_VERSIONS["responses"], "surveyId": ObjectId(), "submittedAt": NOW,
         "answers": [{"questionId": "q_a0000001", "value": {"a": 1}}],
     })
 
@@ -237,7 +238,158 @@ def test_answer_value_object_rejected(db):
 # ---------- participations ----------
 
 def test_duplicate_participation_rejected(db):
-    doc = {"schemaVersion": SCHEMA_VERSION, "surveyId": ObjectId(), "userId": ObjectId(), "count": 1}
+    doc = {"schemaVersion": SCHEMA_VERSIONS["participations"], "surveyId": ObjectId(), "userId": ObjectId(), "count": 1}
     db.participations.insert_one(dict(doc))
     with pytest.raises(DuplicateKeyError):
         db.participations.insert_one(dict(doc))
+
+
+# ---------- 阶段二：questions / question_versions / question_banks ----------
+
+def make_question(**overrides):
+    doc = {
+        "schemaVersion": SCHEMA_VERSIONS["questions"],
+        "ownerId": ObjectId(),
+        "latest": {"versionId": ObjectId(), "version": 1, "type": "number_input", "title": "你的年龄"},
+        "derivedFrom": None,
+        "sharedWith": [],
+        "createdAt": NOW,
+        "updatedAt": NOW,
+    }
+    doc.update(overrides)
+    return doc
+
+
+def make_version(**overrides):
+    doc = {
+        "schemaVersion": SCHEMA_VERSIONS["question_versions"],
+        "questionId": ObjectId(),
+        "version": 1,
+        "parentVersionId": None,
+        "kind": "create",
+        "content": {
+            "type": "single_choice", "title": "你的年级", "required": True,
+            "options": [{"id": "o_d0000001", "label": "大一"}, {"id": "o_d0000002", "label": "大二"}],
+        },
+        "note": "",
+        "createdBy": ObjectId(),
+        "createdAt": NOW,
+    }
+    doc.update(overrides)
+    return doc
+
+
+def make_bank(**overrides):
+    doc = {
+        "schemaVersion": SCHEMA_VERSIONS["question_banks"],
+        "ownerId": ObjectId(),
+        "name": "常用人口学题目",
+        "description": "",
+        "items": [{"questionId": ObjectId(), "addedAt": NOW}],
+        "sharedWith": [ObjectId()],
+        "createdAt": NOW,
+        "updatedAt": NOW,
+    }
+    doc.update(overrides)
+    return doc
+
+
+def test_valid_question_version_and_bank_accepted(db):
+    db.questions.insert_one(make_question())
+    db.questions.insert_one(make_question(
+        derivedFrom={"questionId": ObjectId(), "versionId": ObjectId(), "version": 2}))
+    db.question_versions.insert_one(make_version())
+    db.question_versions.insert_one(make_version(content={
+        "type": "number_input", "title": "你的年龄", "required": True,
+        "validation": {"min": 0, "max": 120, "integer": True}}))
+    db.question_banks.insert_one(make_bank())
+
+
+def test_question_missing_latest_rejected(db):
+    doc = make_question()
+    del doc["latest"]
+    assert_rejected(db.questions, doc)
+
+
+def test_shared_with_duplicates_rejected(db):
+    uid = ObjectId()
+    assert_rejected(db.questions, make_question(sharedWith=[uid, uid]))
+
+
+def _with_content(**changes):
+    version = make_version()
+    version["content"] = {**version["content"], **changes}
+    return version
+
+
+def test_version_content_cannot_have_jump_rules(db):
+    # 跳转规则引用同一问卷里的其他题，属于问卷，不属于题目本身
+    assert_rejected(db.question_versions, _with_content(jumpRules=[]))
+
+
+def test_version_content_cannot_have_question_id(db):
+    # 题目 id 属于具体问卷，加入问卷时才生成
+    assert_rejected(db.question_versions, _with_content(id="q_a0000001"))
+
+
+def test_version_content_type_rules_checked(db):
+    assert_rejected(db.question_versions, _with_content(options=[{"id": "o_d0000001", "label": "大一"}]))
+    assert_rejected(db.question_versions, _with_content(type="rating"))
+
+
+def test_version_number_must_be_positive(db):
+    assert_rejected(db.question_versions, make_version(version=0))
+
+
+def test_bad_version_kind_rejected(db):
+    assert_rejected(db.question_versions, make_version(kind="overwrite"))
+
+
+def test_duplicate_version_number_rejected(db):
+    qid = ObjectId()
+    db.question_versions.insert_one(make_version(questionId=qid, version=1))
+    db.question_versions.insert_one(make_version(questionId=qid, version=2))
+    with pytest.raises(DuplicateKeyError):
+        db.question_versions.insert_one(make_version(questionId=qid, version=2))
+
+
+def test_bank_item_needs_question_id(db):
+    assert_rejected(db.question_banks, make_bank(items=[{"addedAt": NOW}]))
+
+
+def test_bank_missing_name_rejected(db):
+    doc = make_bank()
+    del doc["name"]
+    assert_rejected(db.question_banks, doc)
+
+
+# ---------- surveys：题目来源（阶段二） ----------
+
+SOURCE = {"questionId": ObjectId(), "versionId": ObjectId(), "version": 3}
+
+
+def test_survey_question_with_source_or_derived_from_accepted(db):
+    survey = _with_question(0, source=SOURCE)
+    survey["questions"][3] = {**survey["questions"][3], "derivedFrom": SOURCE}
+    db.surveys.insert_one(survey)
+
+
+def test_survey_source_missing_version_id_rejected(db):
+    source = {k: v for k, v in SOURCE.items() if k != "versionId"}
+    assert_rejected(db.surveys, _with_question(0, source=source))
+
+
+def test_stage1_survey_version_still_accepted(db):
+    # 迁移前的旧文档（schemaVersion 1）也必须能通过新校验器
+    db.surveys.insert_one(make_survey(schemaVersion=1))
+
+
+def test_future_schema_version_rejected(db):
+    assert_rejected(db.surveys, make_survey(schemaVersion=SCHEMA_VERSIONS["surveys"] + 1))
+
+
+def test_where_used_query_uses_index(db):
+    db.surveys.insert_one(_with_question(0, source=SOURCE))
+    plan = json.dumps(db.surveys.find({"questions.source.questionId": SOURCE["questionId"]}).explain(), default=str)
+    assert "IXSCAN" in plan and "question_source" in plan
+    assert "COLLSCAN" not in plan

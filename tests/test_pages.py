@@ -15,10 +15,11 @@ def test_share_link_serves_fill_page(client):
 
 
 def test_static_pages_exist(client):
-    for page in ["login", "surveys", "edit", "fill", "stats"]:
+    for page in ["login", "surveys", "edit", "fill", "stats", "library", "question", "bank", "question-stats"]:
         resp = client.get(f"/static/{page}.html")
         assert resp.status_code == 200, page
-    for asset in ["css/style.css", "js/common.js", "js/fill.js"]:
+    for asset in ["css/style.css", "js/common.js", "js/fill.js", "js/question-form.js", "js/library.js",
+                  "js/question.js", "js/bank.js", "js/question-stats.js"]:
         assert client.get(f"/static/{asset}").status_code == 200, asset
 
 

@@ -5,6 +5,7 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import ReopenRequest, SurveyCreate, SurveyDetail, SurveySummary, SurveyUpdate
 from app.services import surveys as svc
+from app.services.survey_library import attach_library_info
 
 router = APIRouter(prefix="/api/surveys", tags=["问卷管理"])
 
@@ -20,7 +21,8 @@ def _call(fn, *args):
 
 
 def _detail(db: Database, user: dict, survey_id: str) -> dict:
-    return svc.to_detail(_call(svc.get_survey, db, user["_id"], survey_id))
+    detail = svc.to_detail(_call(svc.get_survey, db, user["_id"], survey_id))
+    return attach_library_info(db, user["_id"], detail)
 
 
 @router.post("", response_model=SurveyDetail, status_code=status.HTTP_201_CREATED, summary="创建问卷（草稿）")

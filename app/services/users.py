@@ -8,7 +8,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.security import hash_password, verify_dummy, verify_password
-from db.schema import SCHEMA_VERSION
+from db.schema import SCHEMA_VERSIONS
 
 
 class UsernameTaken(Exception):
@@ -23,7 +23,7 @@ def _now() -> datetime:
 
 def create_user(db: Database, username: str, password: str, display_name: str) -> dict:
     doc = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS["users"],
         "username": username,
         "displayName": display_name,
         "passwordHash": hash_password(password),

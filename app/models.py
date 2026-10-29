@@ -331,3 +331,226 @@ class SurveyStats(ApiModel):
     title: str
     total_responses: int = Field(description="问卷总提交数")
     questions: list[QuestionStat] = Field(description="填空题只带最新 5 条内容，全部内容见单题统计")
+
+
+# ---------- 题库：题目与版本（阶段二） ----------
+
+def _check_note(v: str) -> str:
+    v = v.strip()
+    if len(v) > 200:
+        raise PydanticCustomError("note_length", "修改说明不能超过 200 个字符")
+    return v
+
+
+Note = Annotated[str, AfterValidator(_check_note)]
+
+
+class QuestionCreate(StrictModel):
+    content: QuestionIn = Field(description="题目内容，格式与问卷里添加题目相同")
+    note: Note = Field(default="", description="说明（可选）")
+
+
+class VersionCreate(StrictModel):
+    base_version: int = Field(ge=1, description="基于哪个版本修改（可以不是最新版本）")
+    content: QuestionIn = Field(description="新版本的完整内容；题型须与基础版本相同；原有选项带上 id 以保持不变")
+    note: Note = Field(default="", description="修改说明（可选）")
+
+
+class ForkRequest(StrictModel):
+    version: int | None = Field(default=None, ge=1, description="复制哪个版本；不传为最新版本")
+
+
+class VersionRef(ApiModel):
+    question_id: str
+    version_id: str
+    version: int
+
+
+class LatestVersion(ApiModel):
+    version_id: str
+    version: int
+    type: str
+    title: str
+
+
+class QuestionSummary(ApiModel):
+    id: str
+    latest: LatestVersion = Field(description="最新版本的摘要")
+    owner: str = Field(description="创建者「名字（账号）」")
+    is_owner: bool = Field(description="当前用户是否为创建者（只有创建者能建新版本、恢复、删除）")
+    derived_from: VersionRef | None = Field(description="复制自哪道题的哪个版本；自己新建的为 null")
+    created_at: datetime
+    updated_at: datetime
+
+
+class SharedUser(ApiModel):
+    username: str
+    display_name: str
+
+
+class QuestionDetail(QuestionSummary):
+    content: dict = Field(description="最新版本的完整内容")
+    shared_with: list[SharedUser] | None = Field(description="共享给了谁；只有创建者能看到，其他人为 null")
+
+
+class VersionSummary(ApiModel):
+    id: str
+    version: int
+    parent_version: int | None = Field(description="基于哪个版本创建；第一个版本为 null")
+    kind: str = Field(description="create 新建 / edit 修改 / restore 恢复旧版本 / fork 复制自其他题")
+    note: str
+    title: str
+    created_at: datetime
+
+
+class VersionOut(VersionSummary):
+    content: dict
+
+
+class ShareRequest(StrictModel):
+    username: str = Field(min_length=1, max_length=64, description="共享给哪个账号")
+
+
+# ---------- 题库 ----------
+
+def _check_bank_name(v: str) -> str:
+    v = v.strip()
+    if not 1 <= len(v) <= 100:
+        raise PydanticCustomError("bank_name_length", "题库名称须为 1–100 个字符")
+    return v
+
+
+def _check_bank_description(v: str) -> str:
+    if len(v) > 1000:
+        raise PydanticCustomError("bank_description_length", "题库说明不能超过 1000 个字符")
+    return v
+
+
+BankName = Annotated[str, AfterValidator(_check_bank_name)]
+BankDescription = Annotated[str, AfterValidator(_check_bank_description)]
+
+
+class BankCreate(StrictModel):
+    name: BankName
+    description: BankDescription = ""
+
+
+class BankUpdate(StrictModel):
+    """只修改传了的字段。"""
+
+    name: BankName | None = None
+    description: BankDescription | None = None
+
+
+class BankItemAdd(StrictModel):
+    question_id: str = Field(description="要加入的题目 id（只能是自己创建的题）")
+
+
+class BankSummary(ApiModel):
+    id: str
+    name: str
+    description: str
+    owner: str = Field(description="创建者「名字（账号）」")
+    is_owner: bool
+    item_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BankItem(QuestionSummary):
+    added_at: datetime
+
+
+class BankDetail(BankSummary):
+    items: list[BankItem] = Field(description="题库里的题，按加入时间排列；显示每道题的最新版本")
+    shared_with: list[SharedUser] | None = Field(description="共享给了谁；只有创建者能看到，其他人为 null")
+
+
+# ---------- 问卷 ↔ 题库 ----------
+
+class FromLibraryRequest(StrictModel):
+    question_id: str = Field(description="题库里的题目 id（自己的、共享给我的、在共享给我的题库里的）")
+    version: int | None = Field(default=None, ge=1, description="用哪个版本；不传为最新版本")
+    required: bool | None = Field(default=None, description="本问卷里是否必答；不传沿用版本里的设置")
+
+
+class SaveToLibraryRequest(StrictModel):
+    note: Note = Field(default="", description="说明（可选）")
+
+
+class SwitchVersionRequest(StrictModel):
+    version: int = Field(ge=1, description="换成题库里的哪个版本")
+
+
+class VersionUsage(ApiModel):
+    version: int
+    version_id: str
+    mine: int = Field(description="自己有几份问卷在用这个版本")
+    others: int = Field(description="别人有几份问卷在用；不是题目创建者时为 0")
+
+
+class SurveyUsage(ApiModel):
+    survey_id: str
+    title: str
+    phase: str = Field(description="draft 草稿 / open 收集中 / expired 已截止 / closed 已关闭")
+    version: int = Field(description="这份问卷用的是第几版")
+    question_number: int = Field(description="在问卷里是第几题")
+    response_count: int
+    is_latest: bool = Field(description="是否已是最新版本；草稿且不是最新时可以切换版本")
+
+
+class QuestionUsage(ApiModel):
+    question_id: str
+    is_owner: bool
+    total_surveys: int = Field(description="正在使用的问卷总数（创建者看到全部；其他人只算自己的）")
+    others_total: int | None = Field(description="别人的问卷有多少份在用；只告诉题目创建者，其他人为 null")
+    versions: list[VersionUsage] = Field(description="按版本分组的使用数量")
+    my_surveys: list[SurveyUsage] = Field(description="自己的问卷，按创建时间倒序；已脱钩的不算在用")
+
+
+# ---------- 跨问卷统计（阶段二） ----------
+
+class MergedOptionStat(OptionStat):
+    versions: list[int] = Field(description="这个选项出现在哪些版本里")
+    other_labels: list[str] = Field(description="其他版本里不同的写法（选项 id 相同、文字改过）")
+
+
+class Bucket(ApiModel):
+    from_: int | float = Field(alias="from", description="区间下界（含）")
+    to: int | float = Field(description="区间上界（不含）")
+    count: int
+
+
+class CrossEntry(Entry):
+    survey_id: str
+    survey_title: str
+
+
+class SurveyBreakdown(ApiModel):
+    survey_id: str
+    title: str
+    version: int = Field(description="这份问卷用的是第几版")
+    question_number: int = Field(description="在问卷里是第几题")
+    answered_count: int
+    total_responses: int
+
+
+class CrossQuestionStats(ApiModel):
+    question_id: str
+    type: str
+    title: str = Field(description="参与统计的最新版本的标题")
+    version: int | None = Field(default=None, description="只统计某个版本时为版本号；合并全部版本时没有")
+    survey_count: int = Field(description="参与统计的自己的问卷数")
+    total_responses: int = Field(description="这些问卷的总提交数")
+    answered_count: int = Field(description="回答了这道题的答卷数（因跳转可能少于总提交数），是占比的分母")
+    by_survey: list[SurveyBreakdown] = Field(description="各问卷分别多少，按创建时间倒序")
+    options: list[MergedOptionStat] | None = Field(default=None, description="选择题：按选项 id 合并各版本")
+    average: float | None = Field(default=None, description="数字题平均值，保留 2 位小数")
+    min: int | float | None = None
+    max: int | float | None = None
+    bucket_size: int | float | None = Field(default=None, description="数字题分布的区间宽度")
+    distribution: list[Bucket] | None = Field(default=None, description="数字题分布，区间左闭右开")
+    entries: list[CrossEntry] | None = Field(default=None, description="填空题内容，按提交时间倒序分页")
+    entries_total: int | None = None
+    page: int | None = None
+    page_size: int | None = None

@@ -331,3 +331,224 @@ def test_login_errors_and_logout(new_page):
     expect(page).to_have_url(re.compile(r"/static/login\.html"))
     page.goto("/static/surveys.html")   # 退出后访问需要登录的页面 → 回到登录页
     expect(page).to_have_url(re.compile(r"/static/login\.html\?next="))
+
+
+# ---------- 阶段二：题库 ----------
+
+GRADE = {"type": "single_choice", "title": "你的年级", "required": True,
+         "options": [{"label": "大一"}, {"label": "大二"}, {"label": "大三"}]}
+AGE = {"type": "number_input", "title": "你的年龄", "required": True,
+       "validation": {"min": 0, "max": 120, "integer": True}}
+
+
+def signed_up(new_page, username, display_name):
+    page = new_page()
+    page.goto("/static/login.html")
+    register(page, username, display_name)
+    expect(page).to_have_url(re.compile(r"/static/surveys\.html"))
+    return page
+
+
+def call(page, method, path, body=None):
+    """准备数据：直接在页面里调用 common.js 的 api()（带着这个页面的登录状态），不经过界面。"""
+    return page.evaluate("([m, p, b]) => api(m, p, b === null ? undefined : b)", [method, path, body])
+
+
+def test_library_versions_banks_and_sharing(new_page):
+    student = signed_up(new_page, "lib_student", "小明")
+    teacher = signed_up(new_page, "lib_teacher", "王老师")
+
+    # 1. 新建题目
+    teacher.get_by_test_id("nav-library").click()
+    expect(teacher).to_have_url(re.compile(r"/static/library\.html"))
+    teacher.get_by_test_id("new-question").click()
+    form = teacher.get_by_test_id("question-form")
+    form.get_by_test_id("q-type").select_option("single_choice")
+    form.get_by_test_id("q-title").fill("你的年级")
+    for i, label in enumerate(["大一", "大二", "大三"]):
+        if i >= 2:
+            form.get_by_test_id("q-add-option").click()
+        form.get_by_test_id("q-option").nth(i).fill(label)
+    form.get_by_test_id("q-save").click()
+    expect(teacher).to_have_url(re.compile(r"/static/question\.html\?id="))
+    heading = teacher.get_by_test_id("question-heading")
+    expect(heading).to_have_text("你的年级")
+    rows = teacher.get_by_test_id("version-row")   # 最新的在最上面
+    expect(rows).to_have_count(1)
+
+    # 2. v2：基于 v1 改选项文字；v3：再基于 v1 改标题（版本树出现分支）；恢复 v2 → v4
+    rows.first.get_by_test_id("version-edit").click()
+    form = teacher.get_by_test_id("question-form")
+    form.get_by_test_id("q-option").nth(1).fill("大二（含转专业）")
+    form.get_by_test_id("q-note").fill("改措辞")
+    form.get_by_test_id("q-save").click()
+    expect(rows).to_have_count(2)
+    rows.last.get_by_test_id("version-edit").click()
+    form = teacher.get_by_test_id("question-form")
+    form.get_by_test_id("q-title").fill("你现在的年级")
+    form.get_by_test_id("q-save").click()
+    expect(rows).to_have_count(3)
+    expect(heading).to_have_text("你现在的年级")
+    expect(rows.first.get_by_test_id("version-parent")).to_have_text("v1")
+    rows.nth(1).get_by_test_id("version-restore").click()      # 现在依次是 v3、v2、v1
+    expect(rows).to_have_count(4)
+    expect(rows.first.get_by_test_id("version-parent")).to_have_text("v2")
+    expect(heading).to_have_text("你的年级")
+    rows.nth(2).get_by_test_id("version-view").click()         # 查看 v2 的内容
+    expect(teacher.get_by_test_id("version-panel")).to_contain_text("大二（含转专业）")
+
+    # 3. 共享给小明
+    teacher.get_by_test_id("share-username").fill("lib_student")
+    teacher.get_by_test_id("share-add").click()
+    expect(teacher.get_by_test_id("shared-user")).to_contain_text("小明（lib_student）")
+    shot(teacher, "09-题库-版本历史与共享")
+
+    # 4. 建一个题库，把这道题加进去
+    teacher.goto("/static/library.html#banks")
+    teacher.get_by_test_id("new-bank").click()
+    teacher.get_by_test_id("bank-name").fill("学生基本信息")
+    teacher.get_by_test_id("bank-description").fill("各门课调查都会用到的题")
+    teacher.get_by_test_id("bank-save").click()
+    expect(teacher).to_have_url(re.compile(r"/static/bank\.html\?id="))
+    teacher.get_by_test_id("bank-add-item").click()
+    expect(teacher.get_by_test_id("bank-question")).to_have_count(1)
+    shot(teacher, "10-题库详情")
+
+    # 5. 小明：在"共享给我的题目"里看到，不能修改，可以复制为自己的题
+    student.goto("/static/library.html#shared")
+    items = student.get_by_test_id("library-item")
+    expect(items).to_have_count(1)
+    items.first.get_by_test_id("library-item-title").click()
+    expect(student.get_by_test_id("question-heading")).to_have_text("你的年级")
+    expect(student.get_by_test_id("version-row")).to_have_count(4)
+    expect(student.get_by_test_id("version-edit")).to_have_count(0)
+    expect(student.get_by_test_id("share-box")).to_have_count(0)
+    shot(student, "11-共享给我的题")
+    student.get_by_test_id("version-row").first.get_by_test_id("version-fork").click()
+    expect(student.get_by_test_id("version-row")).to_have_count(1)
+    expect(student.get_by_test_id("version-edit")).to_have_count(1)    # 复制出来的是自己的题，可以修改
+    expect(student.locator("main")).to_contain_text("复制自另一道题的 v4")
+    student.goto("/static/library.html")
+    expect(student.get_by_test_id("library-item")).to_have_count(1)
+
+
+def test_survey_uses_library_questions(new_page):
+    teacher = signed_up(new_page, "edit_teacher", "王老师")
+    lq = call(teacher, "POST", "/api/questions", {"content": GRADE})
+    ids = [o["id"] for o in lq["content"]["options"]]
+    call(teacher, "POST", f"/api/questions/{lq['id']}/versions", {"baseVersion": 1, "content": {
+        **GRADE, "options": [{"id": ids[0], "label": "大一"}, {"id": ids[1], "label": "大二（含转专业）"},
+                             {"id": ids[2], "label": "大三"}]}})
+
+    teacher.goto("/static/surveys.html")
+    teacher.locator("#new-title").fill("课程反馈")
+    teacher.get_by_test_id("create-survey").click()
+    expect(teacher).to_have_url(re.compile(r"/static/edit\.html\?id="))
+
+    # 1. 从题库选题：选旧版本 v1
+    teacher.get_by_test_id("pick-from-library").click()
+    expect(teacher.get_by_test_id("pick-item")).to_have_count(1)
+    shot(teacher, "12-从题库选题")
+    teacher.get_by_test_id("pick-other-version").click()
+    teacher.get_by_test_id("pick-version").select_option("1")
+    teacher.get_by_test_id("pick-add-version").click()
+    card = teacher.get_by_test_id("question-card").first
+    expect(card.get_by_test_id("library-badge")).to_have_text("题库 v1")
+    expect(card.get_by_test_id("library-newer")).to_have_text("题库已有 v2")
+
+    # 2. 切换到最新版本
+    card.get_by_test_id("q-switch").click()
+    expect(teacher.get_by_test_id("switch-version")).to_have_value("2")
+    teacher.get_by_test_id("switch-save").click()
+    expect(card.get_by_test_id("library-badge")).to_have_text("题库 v2")
+    expect(card.get_by_test_id("library-newer")).to_have_count(0)
+
+    # 3. 改内容 → 要求选择保存方式 → 存为题库新版本
+    card.get_by_test_id("q-edit").click()
+    teacher.get_by_test_id("question-form").get_by_test_id("q-title").fill("你目前的年级")
+    teacher.get_by_test_id("q-save").click()
+    expect(teacher.get_by_test_id("library-choice")).to_be_visible()
+    expect(teacher.get_by_test_id("choice-detach")).to_be_visible()
+    shot(teacher, "13-修改题库题-选择保存方式")
+    teacher.get_by_test_id("choice-new-version").click()
+    expect(card.get_by_test_id("library-badge")).to_have_text("题库 v3")
+    expect(card).to_contain_text("你目前的年级")
+
+    # 4. 只改"必答"不算改题：不弹选择，仍关联 v3
+    card.get_by_test_id("q-edit").click()
+    teacher.get_by_test_id("q-required").uncheck()
+    teacher.get_by_test_id("q-save").click()
+    expect(teacher.get_by_test_id("question-form")).to_have_count(0)
+    expect(teacher.get_by_test_id("library-choice")).to_have_count(0)
+    expect(card.get_by_test_id("library-badge")).to_have_text("题库 v3")
+
+    # 5. 普通题存入题库；发布后仍可存入
+    add_question(teacher, "number_input", "你的年龄", required=True, min=0, max=120, integer=True)
+    add_question(teacher, "text_input", "你的建议")
+    cards = teacher.get_by_test_id("question-card")
+    cards.nth(1).get_by_test_id("q-save-to-library").click()
+    expect(cards.nth(1).get_by_test_id("library-badge")).to_have_text("题库 v1")
+    teacher.get_by_test_id("publish").click()
+    expect(teacher.get_by_test_id("share-url")).to_be_visible()
+    cards.nth(2).get_by_test_id("q-save-to-library").click()
+    expect(cards.nth(2).get_by_test_id("library-badge")).to_have_text("题库 v1")
+    expect(teacher.get_by_test_id("q-edit")).to_have_count(0)        # 已发布：内容仍不能改
+
+    # 6. 题目详情里的"被哪些问卷使用"
+    teacher.goto(f"/static/question.html?id={lq['id']}")
+    usage = teacher.get_by_test_id("usage-row")
+    expect(usage).to_have_count(1)
+    expect(usage.first).to_contain_text("课程反馈")
+    expect(usage.first).to_contain_text("v3")
+    shot(teacher, "14-被哪些问卷使用")
+
+
+def test_cross_survey_stats_page(new_page):
+    student = signed_up(new_page, "cross_student", "小明")
+    teacher = signed_up(new_page, "cross_teacher", "王老师")
+    grade = call(teacher, "POST", "/api/questions", {"content": GRADE})
+    first, second, third = (o["id"] for o in grade["content"]["options"])
+    v2 = call(teacher, "POST", f"/api/questions/{grade['id']}/versions", {"baseVersion": 1, "content": {
+        **GRADE, "options": [{"id": first, "label": "大一"}, {"id": second, "label": "大二（含转专业）"},
+                             {"label": "研究生"}]}})
+    graduate = v2["content"]["options"][2]["id"]
+    age = call(teacher, "POST", "/api/questions", {"content": AGE})
+
+    def survey(title, version, answers):
+        sid = call(teacher, "POST", "/api/surveys", {"title": title, "settings": {
+            "allowAnonymous": False, "allowMultipleSubmissions": True}})["id"]
+        call(teacher, "POST", f"/api/surveys/{sid}/questions/from-library",
+             {"questionId": grade["id"], "version": version})
+        qg, qa = (q["id"] for q in call(teacher, "POST", f"/api/surveys/{sid}/questions/from-library",
+                                        {"questionId": age["id"]})["questions"])
+        slug = call(teacher, "POST", f"/api/surveys/{sid}/publish")["slug"]
+        for g, a in answers:
+            call(student, "POST", f"/api/fill/{slug}/responses", {"answers": {qg: g, qa: a}})
+
+    survey("去年的调查", 1, [(third, 18), (third, 19), (second, 20)])
+    survey("今年的调查", 2, [(graduate, 23), (second, 21), (first, 17)])
+
+    # 选择题：两个版本按选项 id 合并，改过文字的选项标出"也叫"
+    teacher.goto(f"/static/question-stats.html?id={grade['id']}")
+    expect(teacher.get_by_test_id("cross-summary")).to_contain_text("2 份问卷")
+    options = teacher.get_by_test_id("option-stat")
+    expect(options).to_have_count(4)
+    expect(options.nth(1)).to_contain_text("2 · 33.33%")
+    expect(teacher.get_by_test_id("other-labels")).to_have_text("也叫「大二」")
+    expect(teacher.get_by_test_id("by-survey-row")).to_have_count(2)
+    shot(teacher, "15-跨问卷统计-选择题")
+    teacher.get_by_test_id("cross-version").select_option("1")
+    expect(options).to_have_count(3)
+    expect(teacher.get_by_test_id("cross-summary")).to_contain_text("1 份问卷")
+
+    # 数字题：平均值与分布，可改区间宽度
+    teacher.goto(f"/static/question-stats.html?id={age['id']}")
+    expect(teacher.get_by_test_id("cross-avg")).to_have_text("19.67")
+    buckets = teacher.get_by_test_id("bucket")
+    expect(buckets).to_have_count(7)                 # 17–23 岁，自动宽度 1
+    teacher.get_by_test_id("cross-bucket").fill("5")
+    teacher.get_by_test_id("cross-bucket-apply").click()
+    expect(buckets).to_have_count(2)
+    expect(buckets.first).to_contain_text("15 ~ 20")
+    expect(buckets.first).to_contain_text("3 人 · 50%")       # 17、18、19 岁；20 归下一个区间
+    shot(teacher, "16-跨问卷统计-数字分布")

@@ -1,9 +1,10 @@
-"""数据库初始化：建集合（带校验器）、更新校验器、建索引。
+"""数据库初始化：建集合（带校验器）、更新校验器、建索引、执行结构迁移。
 
 可重复执行，不删除任何数据：
 - 集合不存在 → 带校验器创建；
 - 集合已存在 → 用 collMod 把校验器更新为 db/schema.py 中的版本；
-- 索引已存在且定义相同 → 跳过；同名但定义不同 → MongoDB 报错（提示需要写迁移）。
+- 索引已存在且定义相同 → 跳过；同名但定义不同 → MongoDB 报错（提示需要写迁移）；
+- 最后执行还没执行过的结构迁移（db/migrations.py）。校验器先更新，迁移后的文档才能通过新校验器。
 
 用法：python -m db.init_db
 """
@@ -11,6 +12,7 @@
 from pymongo.database import Database
 from pymongo.errors import CollectionInvalid
 
+from db.migrations import migrate
 from db.schema import INDEXES, VALIDATION_ACTION, VALIDATION_LEVEL, VALIDATORS
 
 
@@ -44,6 +46,7 @@ def init_db(db: Database) -> list[str]:
             db[coll].create_index(keys, **opts)
             actions.append(f"创建索引 {coll}.{opts['name']}")
 
+    actions += migrate(db)
     return actions
 
 

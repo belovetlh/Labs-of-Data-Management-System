@@ -18,7 +18,9 @@ from pymongo.errors import DuplicateKeyError
 
 from app.engine.jump import Evaluation, evaluate_submission, navigate
 from app.services.surveys import now_utc, phase_of
-from db.schema import SCHEMA_VERSION
+from db.schema import SCHEMA_VERSIONS
+
+FILL_HIDDEN = {"jumpRules", "source", "derivedFrom"}
 
 
 class FillNotFound(Exception):
@@ -89,8 +91,8 @@ def fill_view(db: Database, slug: str, user: dict) -> dict:
         "can_submit": reason is None,
         "reason": reason,
         "already_submitted": already,
-        # 不返回跳转规则：下一题由服务端 navigate 计算
-        "questions": [{k: v for k, v in q.items() if k != "jumpRules"} for q in survey["questions"]],
+        # 填写者只需要题目本身：不带跳转规则（下一题由 navigate 计算），也不带题库来源
+        "questions": [{k: v for k, v in q.items() if k not in FILL_HIDDEN} for q in survey["questions"]],
     }
 
 
@@ -112,14 +114,15 @@ def _register_participation(db: Database, survey: dict, user_id: ObjectId) -> Ca
     key = {"surveyId": survey["_id"], "userId": user_id}
     if not survey["settings"]["allowMultipleSubmissions"]:
         try:
-            result = db.participations.insert_one({"schemaVersion": SCHEMA_VERSION, **key, "count": 1})
+            result = db.participations.insert_one(
+                {"schemaVersion": SCHEMA_VERSIONS["participations"], **key, "count": 1})
         except DuplicateKeyError:
             # 唯一索引 uniq_survey_user：并发提交时也只有一个能登记成功
             raise AlreadySubmitted from None
         return lambda: db.participations.delete_one({"_id": result.inserted_id})
 
     result = db.participations.update_one(
-        key, {"$inc": {"count": 1}, "$setOnInsert": {"schemaVersion": SCHEMA_VERSION}}, upsert=True
+        key, {"$inc": {"count": 1}, "$setOnInsert": {"schemaVersion": SCHEMA_VERSIONS["participations"]}}, upsert=True
     )
     if result.upserted_id is not None:
         return lambda: db.participations.delete_one({"_id": result.upserted_id})
@@ -136,7 +139,7 @@ def submit(db: Database, slug: str, user: dict, answers: dict[str, Any]) -> date
     undo = _register_participation(db, survey, user["_id"])
     now = now_utc()
     response = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS["responses"],
         "surveyId": survey["_id"],
         "submittedAt": now,
         "answers": evaluation.answers,  # 只含路径上实际作答的题，值已整理
